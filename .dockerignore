@@ -1,0 +1,8 @@
+node_modules
+.npm-cache
+.dsh-vision-router
+test
+docs
+*.md
+.git
+.diag

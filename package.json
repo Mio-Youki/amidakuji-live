@@ -1,0 +1,22 @@
+{
+  "name": "amidakuji-live",
+  "version": "0.1.0",
+  "private": true,
+  "description": "像素抽签 · 在线阿弥陀籤（Ghost Leg）多人抽签游戏",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/pitch.js && node test/e2e.js",
+    "test:pitch": "node test/pitch.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.7.5"
+  }
+}

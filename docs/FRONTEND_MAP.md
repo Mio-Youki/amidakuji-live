@@ -1,0 +1,123 @@
+# 前端地图（FRONTEND_MAP）
+
+> 目的：让新 Agent / 协作者**快速定位"改哪里"**。改界面风格先看 §2 视觉令牌，改某个界面先查 §3 映射表，改完按 §6 验证。
+> 配套规范：**改动必须按 [CONTRIBUTING.md](CONTRIBUTING.md) 同步更新本文档**（新增元素在此登记、删除元素在此删行）。
+> 约定：本文所有行号仅供参考（会随代码漂移），以**符号名**为准。
+
+---
+
+## 1. 文件总览
+
+| 文件 | 职责 | 关键符号（按重要性） |
+|---|---|---|
+| `public/index.html` | 页面骨架：6 个屏幕 + 顶栏 + 弹层 | `#screen-home` `#screen-lobby` `#screen-board` `#screen-done` `#modal-edit`，顶栏 `#btn-exit #room-chip #audio-ind #conn-dot #btn-sound` |
+| `public/style.css` | **全部视觉风格**：设计令牌(:root)、CRT、面板/按钮/横幅/结果等组件样式 | `:root` 变量、`.panel .btn .banner .method-btn .mode-row .crt` |
+| `public/app.js` | 主逻辑：socket 协议、状态渲染、交互、画法、音频中继接线 | `render*` 系列、`drawBoard`、`buildDrawControls`、`startHold/holdLoop`、socket 事件 |
+| `public/board.js` | Canvas 画板：几何、绘制、走线动画 | `COL`(画布配色)、`computeGeometry`、`draw`、`drawSlot/drawResult/drawMarker`、`drawVoteInfo`、`runReveal` |
+| `public/game.js` | 阿弥陀籤纯逻辑（浏览器/Node 共用） | `Game.resolve/mapping/path` |
+| `public/audio.js` | chip tune 音效（Web Audio 合成） | `AudioSys.click/pen/turn/riser/fanfare/cheer/…` |
+| `public/voice.js` | 麦克风：音高检测、DSP 降噪、中继采集/播放 | `Voice.detectPitch/downsample/processInput/startRelay/playRelay` + 状态代理属性 |
+| `public/worklet-capture.js` | AudioWorklet 采集处理器 | `registerProcessor('capture-processor')` |
+| `public/demo.html` | 单人本地演示页（无服务器） | `drawStatic` / `run` / `?mode=flicker|end` |
+
+---
+
+## 2. 视觉设计令牌（**改风格先看这里**）
+
+### 2.1 全局配色（`style.css` `:root`）
+| 变量 | 默认值 | 用途 |
+|---|---|---|
+| `--bg` | `#0b1026` | 页面底色（深蓝黑） |
+| `--panel` | `#141b3d` | 面板底 |
+| `--panel2` | `#1a2350` | 按钮底 |
+| `--ink` | `#e8ecff` | 主文字 |
+| `--dim` | `#8b93c7` | 次级文字/边框 |
+| `--yellow` | `#ffd23f` | 主强调（引导层/房主） |
+| `--cyan` | `#4dc3ff` | 次级强调（编号/元信息） |
+| `--pink` | `#ff2e55` | 主按钮/房主入口 |
+| `--green` | `#7dff5f` | 成功/落定/连接 |
+| `--purple` | `#c792ff` | 预留 |
+| `--orange` | `#ff8f3f` | 预留 |
+
+### 2.2 画布配色（`board.js` `COL` 对象）
+画板内所有颜色独立于 CSS：`COL.bg/line/horiz/guide/slot/result/q/flip/sel/…`——**改画板颜色改这里，改页面颜色改 :root**。
+
+### 2.3 字体与布局
+- 字体栈（`style.css` body）：`'Press Start 2P'`(拉丁像素) + `'Fusion Pixel 12px'`(中文像素，CDN 兜底) + 系统回退
+- 画板几何（`board.js computeGeometry`）：`mTop=74`（顶部留票数区）、`mBottom=74`（结果区）、起点槽 y=34、画板高 `宽×1.25+20`（app.js drawBoard）
+- 动效常量（`board.js`）：`SPEED=95`(px/s) `PAUSE=0.16`(拐弯) `REVEAL_MAX=20`(秒上限)
+- CRT 扫描线：`.crt`（style.css，可整体删掉换主题）
+
+---
+
+## 3. UI 元素 → 代码位置映射表（**改某个界面先查这里**）
+
+| 界面/元素 | 屏幕容器 | 渲染/生成代码 | 样式 |
+|---|---|---|---|
+| 首页：创建/加入表单 | `#screen-home` | `index.html #tab-create/#tab-join`；事件 `app.js btn-create/btn-join` | `.tabs .panel input textarea select` |
+| 大厅：房间码+复制 | `#screen-lobby` | `app.js renderLobby` → `#lobby-code #btn-copy` | `.code-row .code` |
+| 大厅：参与者列表 | 〃 | `renderLobby` → `#player-list`（P#/颜色点/房主/托管标签） | `.player-item .dot .tag` |
+| 大厅：结果列表 + [+]编辑 | 〃 | `renderLobby` → `#result-list`（房主见 `+` 打开弹层） | `.result-chip .add-chip` |
+| 大厅：配置（模式/轮次/笔画数） | 〃 | `renderLobby` 同步；`index.html #in-mode2 #btn-round #in-maxlines` | `.mode-row .mode-col .round-toggle` |
+| 游戏横幅（画线/选点/揭晓提示） | `#screen-board` | `app.js renderDrawing / renderPicking / renderReveal` → `#turn-banner` | `.banner .you` |
+| 画板（竖线/横线/槽/结果格/标记） | 〃 | `board.js draw()` + 子绘制函数 | `#board`（canvas） |
+| 控制栏：画法按钮/按住/仪表 | 〃 | `app.js buildDrawControls / startHold / holdLoop` → `#control-bar` | `.draw-methods .method-btn .hold-btn .hold-meter` |
+| 进度条 | 〃 | `renderDrawing/renderPicking` → `#progress-fill` | `.progress` |
+| 结果页（个人表/共享） | `#screen-done` | `app.js renderDone` → `#done-list / #done-group` | `.done-item .done-group-*` |
+| 修改结果弹层 | `#modal-edit` | `index.html`；打开逻辑在 `renderLobby` 的 `+` 点击 | `.modal .modal-box` |
+| 顶栏：退出/房间码/收听/连接/静音 | 所有屏 | `app.js render/resetToHome/setConn/audio 事件` | `.exit-btn .chip .audio-ind .conn-dot .icon-btn` |
+
+---
+
+## 4. 修改速查表（"我想改 X → 去改 Y"）
+
+| 我想改… | 去改… |
+|---|---|
+| 整体配色/字体/圆角/CRT | `style.css`（`:root` 变量 + 组件样式） |
+| 画板线条颜色/格子/结果格样式 | `board.js` `COL` + `draw/drawSlot/drawResult` |
+| 某个界面的**文案** | `app.js` 对应 `render*` 函数里的 HTML 字符串 |
+| 按钮/横幅/列表的**布局尺寸** | `style.css` 对应组件类 |
+| 画板尺寸/间距 | `board.js computeGeometry` + `app.js drawBoard` 高度公式 |
+| 走线动画速度/拐弯停顿 | `board.js` `SPEED/PAUSE/REVEAL_MAX` |
+| 音效音色/音量 | `audio.js` `A.xxx`（频率/时长/波形） |
+| 音高检测/降噪参数 | `voice.js`（`detectPitch`、`makeBiquad`、`createGate`） |
+| **游戏规则/流程**（不是界面） | `server.js` 状态机 + `game.js` 纯函数（前端只做渲染） |
+| 新增一个界面 | `index.html` 加 `#screen-xxx` → `app.js render()` 加 case → `renderXxx()` 写渲染 |
+
+---
+
+## 5. 数据流与约定（改动前必读）
+
+### 5.1 状态快照（服务端 `snapshot()` 下发，`app.js` 存 `S`）
+```
+S = { myId, code, phase, N, results, lines, lineMeta, nextLevel, maxLines,
+      players[{id,name,online,color,seat,hosted}], turnIdx, turnDeadline, turnName,
+      picksCount, hostId, mode, roundMode, quota, turnLines,
+      myPick, pickedBy, pickedSlots, voteSlots, voteCounts, hostVoteStart,
+      winnerStart, myResult, starts, finalResults/resultText/votes … }
+```
+**前端只读 `S` 渲染，绝不自行改游戏状态**；所有变更走 socket 事件。
+
+### 5.2 Socket 事件（client→server）
+`create_room join_room rejoin update_results set_mode set_round set_maxlines start_drawing draw_line end_drawing end_turn pick_start leave_room restart reconfigure`＋音频通道 `bind / audio`＋`reveal_finished`（服务器在 `server.js` 逐一校验）。
+
+### 5.3 画板 cfg（`board.js draw(cfg)` 的入参）
+`{phase,N,M,lines,lineColors,lineAuto,nextLevel,results,myTurn,previewPair,guideColor,slotSel,myPick,pickedSlots,voteSlots,voteCounts,hostVoteStart,hostColor,voteCountAnim,revealed,markers}`——新增画板视觉元素时按需扩展。
+
+### 5.4 约定
+- **界面文案全部中文**，直接写在 render 函数的 HTML 字符串里（改文案=改字符串）
+- 画法/模式/轮次等枚举值：`'tap|voice|blow|shake|destiny'`、`'individual|host|vote'`、`'multi|single'`
+- 玩家身份：`P{seat} 名字`，颜色 `player.color`（随机分配，同房不撞）
+- 视觉风格：像素化（`image-rendering:pixelated`、块状边框、无圆角或小圆角）
+
+---
+
+## 6. 验证与回归
+
+| 场景 | 命令/入口 |
+|---|---|
+| 全量测试 | `npm test`（音高/DSP 单测 + e2e 全场景） |
+| 单人试玩 | 浏览器开 `http://127.0.0.1:3000` 建房即可单人开局 |
+| 本地多人 | 普通窗口 + 无痕窗口（两个窗口 = 两人） |
+| 演示页 | `http://127.0.0.1:3000/demo.html`（无服务器，`?mode=flicker` 看消隐、`?mode=end` 看落定） |
+| 语音自测 | 大厅「🎤 测试麦克风」（权限/采集/回放/广播通道四层） |

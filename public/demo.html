@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>像素抽签 · 本地演示</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="crt" aria-hidden="true"></div>
+<div id="app">
+  <header class="topbar">
+    <div class="logo">像素抽签</div>
+    <div class="topright"><button id="btn-sound" class="icon-btn">♪</button></div>
+  </header>
+  <main>
+    <section id="screen-demo" class="screen">
+      <div id="demo-banner" class="banner">本地演示 · 5 条竖线 · 3 人 · 点「重新走线」揭晓</div>
+      <div class="canvas-wrap"><canvas id="board"></canvas></div>
+      <div class="control-bar">
+        <button id="btn-redraw" class="btn primary">重新画线</button>
+        <button id="btn-run" class="btn">重新走线</button>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="toast" class="toast hidden"></div>
+<div id="diag-err" style="color:#ff2e55;font-family:monospace;font-size:11px;white-space:pre-wrap;display:none"></div>
+<script>
+window.onerror = function (msg, src, line, col, err) {
+  var el = document.getElementById('diag-err');
+  el.style.display = 'block';
+  el.textContent += 'ERROR: ' + msg + ' @ ' + line + ':' + col + '\n' + (err && err.stack ? err.stack : '') + '\n';
+  return false;
+};
+</script>
+<script src="game.js"></script>
+<script src="audio.js"></script>
+<script src="board.js"></script>
+<script>
+(function () {
+  'use strict';
+  function fail(e) {
+    var el = document.getElementById('diag-err');
+    el.style.display = 'block';
+    el.textContent += 'THROW: ' + (e && e.message) + '\n' + (e && e.stack ? e.stack : '');
+  }
+  try {
+  const Board = window.Board;
+  const AudioSys = window.AudioSys;
+  const canvas = document.getElementById('board');
+  Board.setup(canvas);
+
+  const N = 5;
+  const M = 10;
+  const results = ['洗碗', '买单', '表演节目', '唱歌', '免罚'];
+  const players = [
+    { playerId: 'a', name: '阿明', color: '#ff2e55', start: 0, isMe: true },
+    { playerId: 'b', name: '小美', color: '#4dc3ff', start: 2, isMe: false },
+    { playerId: 'c', name: '大壮', color: '#7dff5f', start: 4, isMe: false },
+  ];
+  let lines = [];
+
+  // 模拟 3 位玩家轮流画线，线条带玩家颜色（P1/P2/P3 循环）
+  const lineColors = () => lines.map((_, i) => players[i % 3].color);
+  const lineAuto = () => lines.map(() => false);
+
+  function randLines() {
+    lines = [];
+    for (let l = 0; l < M; l++) lines.push(Math.floor(Math.random() * (N - 1)));
+  }
+
+  function size() {
+    const wrap = canvas.parentElement;
+    const w = wrap.clientWidth;
+    const h = Math.max(320, Math.min(580, Math.round(w * 1.25) + 20));
+    Board.resize(w, h);
+    canvas.style.height = h + 'px';
+  }
+
+  function drawStatic(revealedAll) {
+    size();
+    // 默认用「画线阶段」渲染：能看到像素化消隐效果 + 玩家彩色线条
+    Board.draw({
+      phase: revealedAll ? 'done' : 'drawing',
+      N, M, lines, lineColors: lineColors(), lineAuto: lineAuto(), nextLevel: M, results,
+      myTurn: false, previewPair: null,
+      revealed: revealedAll ? Object.fromEntries(results.map((_, i) => [i, true])) : {},
+    });
+  }
+
+  async function run() {
+    size();
+    AudioSys.riser();
+    document.getElementById('demo-banner').textContent = '揭晓中…';
+    const markers = players.map(p => ({ playerId: p.playerId, start: p.start, color: p.color, isMe: p.isMe }));
+    await Board.runReveal(
+      { phase: 'reveal', N, M, lines, lineColors: lineColors(), lineAuto: lineAuto(), results, markers },
+      (pid, resIdx, isMe) => { if (isMe) AudioSys.fanfare(); else AudioSys.turn(); }
+    );
+    document.getElementById('demo-banner').textContent = '揭晓完毕！';
+    drawStatic(true);
+    setTimeout(() => AudioSys.cheer(), 200);
+  }
+
+  randLines();
+  const params = new URLSearchParams(location.search);
+  const mode = params.get('mode'); // 'end' 揭晓完毕态 | 'flicker' 欺骗性闪烁预览
+  if (mode === 'flicker') {
+    lines = [0, 3, 1, 4, 2, 0, 3, 1, 4, 2]; // 固定线条，便于对比闪烁
+    size();
+    const banner = document.getElementById('demo-banner');
+    banner.textContent = '欺骗性闪烁预览：已画线条随机隐现';
+    setInterval(() => {
+      size();
+      Board.draw({
+        phase: 'drawing', N, M, lines, lineColors: lineColors(), lineAuto: lineAuto(), nextLevel: M, results,
+        myTurn: false, previewPair: null, revealed: {},
+      });
+    }, 180);
+  } else if (mode === 'end') {
+    size();
+    const g = Board.computeGeometry(N, M);
+    const endMarkers = players.map(p => ({ x: g.xOf(p.start), y: g.bottomY + 8, color: p.color, isMe: p.isMe }));
+    Board.draw({
+      phase: 'done', N, M, lines, lineColors: lineColors(), lineAuto: lineAuto(), nextLevel: M, results,
+      myTurn: false, previewPair: null, markers: endMarkers,
+      revealed: Object.fromEntries(results.map((_, i) => [i, true])),
+    });
+    document.getElementById('demo-banner').textContent = '揭晓完毕！';
+  } else {
+    drawStatic(false);
+  }
+  if (params.get('auto') === '1') setTimeout(run, 600);
+
+  document.getElementById('btn-redraw').onclick = () => {
+    randLines();
+    drawStatic(false);
+    document.getElementById('demo-banner').textContent = '已重新画线，点「重新走线」揭晓';
+    AudioSys.pen();
+  };
+  document.getElementById('btn-run').onclick = run;
+  document.getElementById('btn-sound').onclick = () => {
+    AudioSys.unlock();
+    AudioSys.setMuted(!AudioSys.isMuted());
+    document.getElementById('btn-sound').textContent = AudioSys.isMuted() ? '×♪' : '♪';
+  };
+  window.addEventListener('resize', () => drawStatic(false));
+  } catch (e) { fail(e); }
+})();
+</script>
+</body>
+</html>

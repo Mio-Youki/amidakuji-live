@@ -1,0 +1,14 @@
+# Render Blueprint：推送到 GitHub 后，Render 会自动按此配置部署
+# 详见 docs/DEPLOY.md
+services:
+  - type: web
+    name: amidakuji-live
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
