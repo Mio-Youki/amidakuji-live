@@ -52,6 +52,7 @@ npm test        # 音高检测/DSP 单测 + e2e 全场景（3人局/单人/投�
 | [CHANGELOG.md](CHANGELOG.md) | 更新日志 |
 | [ROADMAP.md](ROADMAP.md) | 需求池与路线图 |
 | [docs/FRONTEND_MAP.md](docs/FRONTEND_MAP.md) | 前端地图（改界面/风格先看这里） |
+| [docs/BACKEND_MAP.md](docs/BACKEND_MAP.md) | 后端地图（改规则/协议先看这里） |
 | [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) | 协同规范（改动必须配套更新文档） |
 | [docs/DEPLOY.md](docs/DEPLOY.md) | 本地一键运行 / Render 公网部署 |
 | [voicepublic.md](voicepublic.md) | 语音广播技术（架构/问题记录/演进方向） |

@@ -25,8 +25,9 @@
 | **新增/修改前端文件或模块** | `docs/FRONTEND_MAP.md` §1 文件总览 + §3 映射 + §5 数据流；`README.md` 功能速览 | 新文件登记职责与关键符号 |
 | **修改视觉风格**（颜色/字体/布局/背景） | `docs/FRONTEND_MAP.md` §2 视觉令牌（`:root`/`COL`/几何/动效） | 改令牌表；如主题化另更新 ROADMAP 主题项 |
 | **新增/修改界面或元素** | `docs/FRONTEND_MAP.md` §3 UI→代码映射表（增行） | 每个新元素必须登记 |
-| **新增/修改 socket 事件或状态字段** | `docs/FRONTEND_MAP.md` §5 socket 表 + 状态快照结构 | 前后端同步标注 |
-| **修改游戏规则/机制/模式** | `GAME_RULES.md`（决策表）+ `PRD.md` §3 + `CHANGELOG.md` | 规则变更必须反映到一页纸总纲 |
+| **新增/修改 socket 事件或状态字段** | `docs/FRONTEND_MAP.md` §5（协议表）+ `docs/BACKEND_MAP.md` §4（协议表） | 前后端同步标注 |
+| **修改游戏规则/机制/模式** | `GAME_RULES.md`（决策表）+ `PRD.md` §3 + `CHANGELOG.md` + `docs/BACKEND_MAP.md` §3 | 规则变更必须反映到一页纸总纲 |
+| **修改后端结构/新增后端模块** | `docs/BACKEND_MAP.md` §1/§2（文件总览与依赖） | 与前端拆分对称登记 |
 | **语音/音频相关** | `voicepublic.md`（架构/问题记录/演进方向） | 含 DSP、中继、播放链路 |
 | **新增/完成功能项** | `ROADMAP.md`（P0/P1/P2 勾选）+ `CHANGELOG.md` | 完成即勾选 |
 | **部署/运维/环境** | `docs/DEPLOY.md` + `README.md` 快速开始 | 启动方式、平台、注意事项 |

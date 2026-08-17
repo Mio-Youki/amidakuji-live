@@ -23,7 +23,7 @@
 
 | 项 | 说明 |
 |---|---|
-| **前后端模块拆分** | ✅ **前端已完成**（state/net/ui/input + 装配层 + 客户端冒烟测试）；后端拆分（rooms/handlers/audio/config）待做 |
+| **前后端模块拆分** | ✅ **已完成**：前端 state/net/ui/input + 后端 config/rooms/handlers/audio，均配地图文档与测试 |
 | **Vite + 可选 TypeScript** | ES Modules、热更新、构建压缩；TS 锁死 socket 消息结构 |
 | **UI 单元测试** | 画板渲染/动画抽纯函数 + Vitest/jsdom |
 | **状态层抽象** | `RoomStore` 接口（内存实现 → 未来 Redis），对接架构设想 Phase C |

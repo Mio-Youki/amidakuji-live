@@ -3,7 +3,12 @@
 > 所有版本均为 2026-08 的迭代产物。每条记录「功能 / 修复 / 验证」。
 > 测试基线：`npm test`（pitch 单测 + e2e 全场景）。
 
-## v0.10 —— 前端模块化拆分（当前）
+## v0.11 —— 后端模块化拆分（当前）
+- **后端拆分**：server.js（~800 行）拆为 `config.js`（常量）→ `rooms.js`（房间/状态机）→ `handlers.js`（事件）→ `audio.js`（语音中继）+ 瘦身 `server.js`（装配）；行为不变，io 由 server.js 注入
+- **附带修复**：`再来一局`（restart）在单轮模式下此前会丢失配额（quota=0），统一走 `startRound()` 后单轮重开正常
+- **后端地图**：`docs/BACKEND_MAP.md`（文件总览/依赖/规则位置/协议/测试），CONTRIBUTING 矩阵与 README 索引同步
+
+## v0.10 —— 前端模块化拆分
 - **前端拆分**：app.js（~1100 行）按职责拆为 `state.js`（状态/工具）→ `net.js`（网络/事件）→ `ui.js`（渲染）→ `input.js`（画法交互）+ 瘦身 `app.js`（装配/绑定）；行为不变
 - **客户端冒烟测试**：`test/client-smoke.js`（浏览器桩加载全部模块 + 触发初始化 + socket 接线断言），纳入 `npm test`
 - 文档同步：FRONTEND_MAP §1/§3/§4 更新为模块化结构；ROADMAP P2 模块拆分 ✅
