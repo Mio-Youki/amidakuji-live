@@ -4,6 +4,14 @@
 
 ---
 
+## ✅ 当前线上状态
+
+- **线上地址**：https://amidakuji-live.onrender.com（Render Free，Blueprint 自动部署）
+- **同步方式**：改代码 → `git push` 到 GitHub main 分支 → Render 自动重新部署（约 1~2 分钟）
+- **验证**：`npm test` 通过 + 线上开房/加入/语音自测可用
+
+---
+
 ## 一、本地一键运行
 
 | 方式 | 命令 |
@@ -37,7 +45,39 @@ New → Web Service → 选仓库 → 环境：
 ### 更新发布
 推代码到 GitHub（`git push`）→ Render 自动重新部署。
 
-## 三、注意事项
+## 三、日常发布流程速查（改代码 → 上线）
+
+```
+① 改代码 → ② 配套文档（CHANGELOG 必写，其余按 CONTRIBUTING §2 矩阵）
+③ npm test 全绿 → ④ 发布前 checklist → ⑤ commit + push → ⑥ Render 自动部署（1~2 分钟）→ 线上验证
+```
+
+### 发布前 checklist（每次必过）
+
+- [ ] `npm test` 全绿
+- [ ] `git status` 三查：**新增/修改/删除是否符合预期**；出现不认识的文件/文件夹 → 移出或补 `.gitignore`
+- [ ] 中间产物确认：Agent 调试文件必须是 `.dsh-*` / `.tmp-*` 前缀（`.gitignore` 通配已排除，见 CONTRIBUTING §6）
+- [ ] 提交方式：更新已跟踪用 `git add -u`；新增模块**显式** `git add <路径>`（正向选择）
+- [ ] 配套文档已同步（按 CONTRIBUTING §2 矩阵逐项核对）
+- [ ] 提交信息含版本号与改动摘要：`git commit -m "v0.10: xxx"`
+
+```powershell
+git add -u
+git add <新增文件路径…>        # 有新增模块才需要
+git commit -m "v0.10: xxx"
+git push
+```
+
+## 四、保活监控（可选：消灭冷启动）
+
+免费实例 15 分钟无流量会休眠（冷启动 30~60s）。想让"随时开房即达"，用一个免费监控服务每 10 分钟 ping 一次：
+
+- **UptimeRobot**（免费计划可监控 50 个 URL）：
+  1. 注册 → Add New Monitor → 类型 **HTTP(S)**，URL 填 `https://amidakuji-live.onrender.com`，间隔 **10 分钟**
+  2. 保存即开始保活（同时附带宕机告警）
+- 效果：实例不再休眠，冷启动消失；代价是免费实例每月多消耗极少量流量（ping 响应极小）
+
+## 五、注意事项
 
 | 项 | 说明 |
 |---|---|

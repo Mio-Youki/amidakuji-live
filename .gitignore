@@ -1,7 +1,21 @@
+# ---- 依赖与缓存 ----
 node_modules/
 .npm-cache/
+
+# ---- 中间产物 / Agent 调试文件 ----
+# 约定：Agent 中间产物一律用 .dsh-* 或 .tmp-* 前缀命名，通配自动忽略未来新增的同类文件夹
+.dsh-*/
+.diag/
+.tmp*/
 .chrome-test/
-.dsh-vision-router/
 *.log
+
+# ---- 系统/编辑器杂项 ----
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ---- 字体本地化临时文件 ----
 public/fonts/*.zip
 public/fonts/fusion/

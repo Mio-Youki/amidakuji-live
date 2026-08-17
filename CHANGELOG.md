@@ -3,7 +3,11 @@
 > 所有版本均为 2026-08 的迭代产物。每条记录「功能 / 修复 / 验证」。
 > 测试基线：`npm test`（pitch 单测 + e2e 全场景）。
 
-## v0.9 —— 一键运行 + 公网部署 + 前端地图（当前）
+## v0.9.1 —— 正式上线（当前）
+- **部署上线**：https://amidakuji-live.onrender.com（Render Free + Blueprint 自动部署，git push 即同步）
+- 文档同步：README 在线试玩入口、DEPLOY 线上状态
+
+## v0.9 —— 一键运行 + 公网部署 + 前端地图
 - **一键运行分发**：`README.md`（仓库门面）+ `start.bat`/`start.sh`（双击即用）+ `Dockerfile` + `.dockerignore`
 - **Render.com 公网部署**：`render.yaml` Blueprint + `docs/DEPLOY.md`（稳定 HTTPS 网址，语音全功能可用）
 - **前端地图**：`docs/FRONTEND_MAP.md`（视觉令牌 / UI→代码映射 / 修改速查 / 数据流约定，便于新 Agent 上手改界面）
