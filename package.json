@@ -6,8 +6,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node test/pitch.js && node test/e2e.js",
-    "test:pitch": "node test/pitch.js"
+    "test": "node test/pitch.js && node test/client-smoke.js && node test/e2e.js",
+    "test:pitch": "node test/pitch.js",
+    "test:smoke": "node test/client-smoke.js"
   },
   "engines": {
     "node": ">=18"

@@ -3,7 +3,12 @@
 > 所有版本均为 2026-08 的迭代产物。每条记录「功能 / 修复 / 验证」。
 > 测试基线：`npm test`（pitch 单测 + e2e 全场景）。
 
-## v0.9.1 —— 正式上线（当前）
+## v0.10 —— 前端模块化拆分（当前）
+- **前端拆分**：app.js（~1100 行）按职责拆为 `state.js`（状态/工具）→ `net.js`（网络/事件）→ `ui.js`（渲染）→ `input.js`（画法交互）+ 瘦身 `app.js`（装配/绑定）；行为不变
+- **客户端冒烟测试**：`test/client-smoke.js`（浏览器桩加载全部模块 + 触发初始化 + socket 接线断言），纳入 `npm test`
+- 文档同步：FRONTEND_MAP §1/§3/§4 更新为模块化结构；ROADMAP P2 模块拆分 ✅
+
+## v0.9.1 —— 正式上线
 - **部署上线**：https://amidakuji-live.onrender.com（Render Free + Blueprint 自动部署，git push 即同步）
 - 文档同步：README 在线试玩入口、DEPLOY 线上状态
 

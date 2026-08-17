@@ -6,19 +6,25 @@
 
 ---
 
-## 1. 文件总览
+## 1. 文件总览（模块化结构，加载顺序即此表顺序）
 
 | 文件 | 职责 | 关键符号（按重要性） |
 |---|---|---|
 | `public/index.html` | 页面骨架：6 个屏幕 + 顶栏 + 弹层 | `#screen-home` `#screen-lobby` `#screen-board` `#screen-done` `#modal-edit`，顶栏 `#btn-exit #room-chip #audio-ind #conn-dot #btn-sound` |
 | `public/style.css` | **全部视觉风格**：设计令牌(:root)、CRT、面板/按钮/横幅/结果等组件样式 | `:root` 变量、`.panel .btn .banner .method-btn .mode-row .crt` |
-| `public/app.js` | 主逻辑：socket 协议、状态渲染、交互、画法、音频中继接线 | `render*` 系列、`drawBoard`、`buildDrawControls`、`startHold/holdLoop`、socket 事件 |
-| `public/board.js` | Canvas 画板：几何、绘制、走线动画 | `COL`(画布配色)、`computeGeometry`、`draw`、`drawSlot/drawResult/drawMarker`、`drawVoteInfo`、`runReveal` |
 | `public/game.js` | 阿弥陀籤纯逻辑（浏览器/Node 共用） | `Game.resolve/mapping/path` |
 | `public/audio.js` | chip tune 音效（Web Audio 合成） | `AudioSys.click/pen/turn/riser/fanfare/cheer/…` |
 | `public/voice.js` | 麦克风：音高检测、DSP 降噪、中继采集/播放 | `Voice.detectPitch/downsample/processInput/startRelay/playRelay` + 状态代理属性 |
+| `public/board.js` | Canvas 画板：几何、绘制、走线动画 | `COL`(画布配色)、`computeGeometry`、`draw`、`drawSlot/drawResult/drawMarker`、`drawVoteInfo`、`runReveal` |
+| `public/state.js` | **状态层**：全局状态 + 基础工具（被后续模块依赖，必须先加载） | `S` `meId` `pickSel` `pending`；`isHost/myTurn/isSolo/canContinuous`、`toast/ackToast/escapeHtml/show/setHostUI/setConn`、`session/saveSession/clearSession` |
+| `public/net.js` | **网络层**：Socket.IO 连接/事件、语音中继通道、请求封装 | `socket` `audioSocket`、`emitAck`、`relayCaptureHandler`、`socket.on('state'…)`、`visibilitychange` |
+| `public/ui.js` | **界面层**：各阶段渲染、画板装配、倒计时、归票动画、退出清理 | `render*` 系列、`drawBoard`、`buildDrawControls`、`maybeStartVoteAnim`、`startCountdown/stopCountdown`、`resetToHome` |
+| `public/input.js` | **输入层**：画法状态与按住交互（点击/语音/吹气/倾斜/命运） | `drawMethod`、`startHold/holdLoop/endHold/updateMeter`、`methodHint` |
+| `public/app.js` | **装配层（入口）**：交互绑定 + 初始化 | `bindEvents`、`fallbackCopy`、`init`、`DOMContentLoaded` |
 | `public/worklet-capture.js` | AudioWorklet 采集处理器 | `registerProcessor('capture-processor')` |
 | `public/demo.html` | 单人本地演示页（无服务器） | `drawStatic` / `run` / `?mode=flicker|end` |
+
+> **跨模块约定**：模块间通过**全局词法作用域**共享（`state.js` 先加载声明 `const $`/`let S` 等，后续模块直接引用）；顶层 `let/const` 不得重复声明；新模块按此表顺序插入 `index.html`。
 
 ---
 
@@ -55,17 +61,17 @@
 | 界面/元素 | 屏幕容器 | 渲染/生成代码 | 样式 |
 |---|---|---|---|
 | 首页：创建/加入表单 | `#screen-home` | `index.html #tab-create/#tab-join`；事件 `app.js btn-create/btn-join` | `.tabs .panel input textarea select` |
-| 大厅：房间码+复制 | `#screen-lobby` | `app.js renderLobby` → `#lobby-code #btn-copy` | `.code-row .code` |
-| 大厅：参与者列表 | 〃 | `renderLobby` → `#player-list`（P#/颜色点/房主/托管标签） | `.player-item .dot .tag` |
-| 大厅：结果列表 + [+]编辑 | 〃 | `renderLobby` → `#result-list`（房主见 `+` 打开弹层） | `.result-chip .add-chip` |
-| 大厅：配置（模式/轮次/笔画数） | 〃 | `renderLobby` 同步；`index.html #in-mode2 #btn-round #in-maxlines` | `.mode-row .mode-col .round-toggle` |
-| 游戏横幅（画线/选点/揭晓提示） | `#screen-board` | `app.js renderDrawing / renderPicking / renderReveal` → `#turn-banner` | `.banner .you` |
+| 大厅：房间码+复制 | `#screen-lobby` | `ui.js renderLobby` → `#lobby-code #btn-copy` | `.code-row .code` |
+| 大厅：参与者列表 | 〃 | `ui.js renderLobby` → `#player-list`（P#/颜色点/房主/托管标签） | `.player-item .dot .tag` |
+| 大厅：结果列表 + [+]编辑 | 〃 | `ui.js renderLobby` → `#result-list`（房主见 `+` 打开弹层） | `.result-chip .add-chip` |
+| 大厅：配置（模式/轮次/笔画数） | 〃 | `ui.js renderLobby` 同步；`index.html #in-mode2 #btn-round #in-maxlines` | `.mode-row .mode-col .round-toggle` |
+| 游戏横幅（画线/选点/揭晓提示） | `#screen-board` | `ui.js renderDrawing / renderPicking / renderReveal` → `#turn-banner` | `.banner .you` |
 | 画板（竖线/横线/槽/结果格/标记） | 〃 | `board.js draw()` + 子绘制函数 | `#board`（canvas） |
-| 控制栏：画法按钮/按住/仪表 | 〃 | `app.js buildDrawControls / startHold / holdLoop` → `#control-bar` | `.draw-methods .method-btn .hold-btn .hold-meter` |
-| 进度条 | 〃 | `renderDrawing/renderPicking` → `#progress-fill` | `.progress` |
-| 结果页（个人表/共享） | `#screen-done` | `app.js renderDone` → `#done-list / #done-group` | `.done-item .done-group-*` |
-| 修改结果弹层 | `#modal-edit` | `index.html`；打开逻辑在 `renderLobby` 的 `+` 点击 | `.modal .modal-box` |
-| 顶栏：退出/房间码/收听/连接/静音 | 所有屏 | `app.js render/resetToHome/setConn/audio 事件` | `.exit-btn .chip .audio-ind .conn-dot .icon-btn` |
+| 控制栏：画法按钮/按住/仪表 | 〃 | `ui.js buildDrawControls` + `input.js startHold/holdLoop` → `#control-bar` | `.draw-methods .method-btn .hold-btn .hold-meter` |
+| 进度条 | 〃 | `ui.js renderDrawing/renderPicking` → `#progress-fill` | `.progress` |
+| 结果页（个人表/共享） | `#screen-done` | `ui.js renderDone` → `#done-list / #done-group` | `.done-item .done-group-*` |
+| 修改结果弹层 | `#modal-edit` | `index.html`；打开逻辑在 `ui.js renderLobby` 的 `+` 点击 | `.modal .modal-box` |
+| 顶栏：退出/房间码/收听/连接/静音 | 所有屏 | `ui.js render/resetToHome` + `state.js setConn` + `net.js audio 事件` | `.exit-btn .chip .audio-ind .conn-dot .icon-btn` |
 
 ---
 
@@ -75,20 +81,22 @@
 |---|---|
 | 整体配色/字体/圆角/CRT | `style.css`（`:root` 变量 + 组件样式） |
 | 画板线条颜色/格子/结果格样式 | `board.js` `COL` + `draw/drawSlot/drawResult` |
-| 某个界面的**文案** | `app.js` 对应 `render*` 函数里的 HTML 字符串 |
+| 某个界面的**文案** | `ui.js` 对应 `render*` 函数里的 HTML 字符串 |
 | 按钮/横幅/列表的**布局尺寸** | `style.css` 对应组件类 |
-| 画板尺寸/间距 | `board.js computeGeometry` + `app.js drawBoard` 高度公式 |
+| 画板尺寸/间距 | `board.js computeGeometry` + `ui.js drawBoard` 高度公式 |
 | 走线动画速度/拐弯停顿 | `board.js` `SPEED/PAUSE/REVEAL_MAX` |
 | 音效音色/音量 | `audio.js` `A.xxx`（频率/时长/波形） |
 | 音高检测/降噪参数 | `voice.js`（`detectPitch`、`makeBiquad`、`createGate`） |
+| 画法交互逻辑（按住/连续画线） | `input.js`（`startHold/holdLoop/endHold`） |
+| socket 协议/请求封装 | `net.js`（`emitAck`、事件接线） |
 | **游戏规则/流程**（不是界面） | `server.js` 状态机 + `game.js` 纯函数（前端只做渲染） |
-| 新增一个界面 | `index.html` 加 `#screen-xxx` → `app.js render()` 加 case → `renderXxx()` 写渲染 |
+| 新增一个界面 | `index.html` 加 `#screen-xxx` → `ui.js render()` 加 case → `renderXxx()` 写渲染 |
 
 ---
 
 ## 5. 数据流与约定（改动前必读）
 
-### 5.1 状态快照（服务端 `snapshot()` 下发，`app.js` 存 `S`）
+### 5.1 状态快照（服务端 `snapshot()` 下发，`state.js` 存 `S`）
 ```
 S = { myId, code, phase, N, results, lines, lineMeta, nextLevel, maxLines,
       players[{id,name,online,color,seat,hosted}], turnIdx, turnDeadline, turnName,
