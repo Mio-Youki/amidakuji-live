@@ -38,20 +38,24 @@
 
 ## 3. 新增模块登记清单（标准流程）
 
-任何新模块都走这条清单（以"**自定义像素化背景**"为例）：
+任何新模块都走这条清单（以已交付的"**自定义像素化背景**"为例，v0.13）：
 
 ```
-需求：新增"自定义像素化背景"模块（假设为 public/background.js）
+需求：新增"自定义像素化背景"模块（实际实现为 public/pixelate.js）
 ```
-- [ ] 新建 `public/background.js`：自包含模块，暴露全局 `window.PixelBG`，不污染其他文件
-- [ ] `public/index.html`：引入脚本；新增背景容器（如 `<div id="pixel-bg">`）
-- [ ] `public/style.css`：新增背景样式类（并在 §2 令牌表登记新颜色/尺寸变量）
-- [ ] `public/app.js`：初始化接线（`init()` 中 `PixelBG.start()`）
-- [ ] **`docs/FRONTEND_MAP.md`**：§1 文件总览加一行；§3 加"背景层"映射行；§5 若暴露配置项则记录
-- [ ] **`README.md`**：功能速览加"自定义像素化背景"
-- [ ] **`CHANGELOG.md`**：v0.10 记一行（功能/验证）
-- [ ] **`ROADMAP.md`**：若属 P1 项则勾选完成
-- [ ] `npm test` 回归
+- [x] 新建 `public/pixelate.js`：自包含模块，暴露全局 `window.PixelBG` + 纯函数 `pickPixelatedSize`（Node 可测），不污染其他文件
+- [x] `public/index.html`：脚本引入（board.js 之后）；新增 `#panel-bg` 背景面板（`#in-bg` 文件选择 + `#bg-preview` 预览 + `#btn-bg-set`/`#btn-bg-clear`）
+- [x] `public/style.css`：`.file-input` / `.bg-preview`（`image-rendering: pixelated` 保持像素风）
+- [x] `public/app.js`：`bindEvents()` 背景区（选择 → `PixelBG.pixelateFile` → 预览 → `set_bg` 应用/清除）
+- [x] `public/board.js`：`setBg()` + `draw()` 背景层（globalAlpha 0.18，cover 铺满）
+- [x] `public/net.js`：`socket.on('bg')` 应用/清除并重绘
+- [x] `public/types.js` + `globals.d.ts` + `types.d.ts`：`set_bg` 事件载荷 / `PixelBGApi` / `Room.bg`
+- [x] `test/pixelate.js`（尺寸纯函数）+ e2e 场景十（越权/校验/广播/补发/清除）
+- [x] **`docs/FRONTEND_MAP.md`**：§1 加一行；§3 加"自定义背景"映射行；§5 记录 `bg` 通道
+- [x] **`README.md`**：功能速览加"自定义像素化背景"（v0.13）
+- [x] **`CHANGELOG.md`**：v0.13 记功能与验证
+- [x] **`ROADMAP.md`**：P1 勾选完成
+- [x] `npm test` + `npm run typecheck` 回归
 
 ---
 
@@ -118,3 +122,33 @@ git diff --cached   # 检查将要提交的内容（尤其新文件）
   → git status 三查 → git add -u + 显式 add 新路径 → commit → push
   → Render 自动部署
 ```
+
+---
+
+## 7. 类型约定（渐进式 JSDoc/TS，**新增代码必读**）
+
+> 背景：不引入构建工具、不做全量 TS 改造；用 **tsc 类型检查 + JSDoc** 渐进式给代码加类型。
+> 运行：`npm run typecheck`（`tsc --noEmit`，只检查带 `// @ts-check` 的文件，零运行时影响）。
+
+### 7.1 类型定义在哪（协议与状态模型的地基）
+
+| 文件 | 内容 | 谁引用 |
+|---|---|---|
+| `public/types.js` | 客户端状态模型：`RoomState`（快照）、`PlayerState`、`BoardCfg`、`VoiceSample`、`SocketEvents`（事件载荷） | 客户端 `@ts-check` 文件用 `import('./types.js').RoomState` 引用 |
+| `public/globals.d.ts` | 外部全局声明：`io`、`AudioSys/Board/Voice` 接口、`Window.__gamma` | 客户端 |
+| `types.d.ts` | 服务端状态模型：`Room`、`Player`、`RoomSnapshot`（全局接口） | 服务端 `@ts-check` 文件直接引用（`@param {Room} room`） |
+
+### 7.2 新增代码必做
+
+1. **文件顶部加 `// @ts-check`**（仅对新增/重写的文件；既有文件改到哪加到哪，渐进）
+2. 引用类型：
+   - 客户端：`/** @type {import('./types.js').RoomState | null} */ let S = null;`
+   - 服务端：函数参数 `/** @param {Room} room */`（`Room` 是 types.d.ts 全局接口）
+3. 收尾：`npm run typecheck` 必须通过
+4. **扩展类型定义**：协议/状态模型变化时同步更新 `public/types.js` 或 `types.d.ts`（新增字段、新事件），并在 FRONTEND_MAP §5 / BACKEND_MAP §4 记录
+
+### 7.3 已知边界
+
+- `checkJs` 全局关闭，**只有** `// @ts-check` 文件被检查——未加注文件不报错也不受益（这正是渐进式）
+- 服务端运行时用 Node（`setTimeout` 等），类型面按当前 tsconfig 解析即可，不必追求严格模式（`strict:false`）
+- 不引入 Vite；若未来需要 ES Modules/热更新再评估（见 ROADMAP）

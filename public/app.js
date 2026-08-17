@@ -98,6 +98,46 @@ function bindEvents() {
     socket.emit('start_drawing', {}, ackToast);
   });
 
+  // 自定义背景：选择图片 → 像素化预览 → 应用/清除（仅房主面板可见）
+  let pendingBg = null;
+  $('in-bg').addEventListener('change', () => {
+    const f = $('in-bg').files && $('in-bg').files[0];
+    if (!f) return;
+    PixelBG.pixelateFile(f, url => {
+      if (!url) { toast('图片处理失败或超过大小限制'); AudioSys.error(); return; }
+      pendingBg = url;
+      const pv = $('bg-preview');
+      const pctx = pv.getContext('2d');
+      const img = new Image();
+      img.onload = () => {
+        if (!pctx) return;
+        pctx.imageSmoothingEnabled = false;
+        pctx.fillStyle = '#0b1026';
+        pctx.fillRect(0, 0, pv.width, pv.height);
+        const k = Math.min(pv.width / img.width, pv.height / img.height);
+        pctx.drawImage(img, (pv.width - img.width * k) / 2, (pv.height - img.height * k) / 2, img.width * k, img.height * k);
+      };
+      img.src = url;
+      pv.classList.remove('hidden');
+      toast('已像素化，点「应用背景」生效');
+    });
+  });
+  $('btn-bg-set').addEventListener('click', () => {
+    if (pendingBg == null) { toast('请先选择图片'); return; }
+    socket.emit('set_bg', { dataUrl: pendingBg }, r => {
+      if (r && r.error) { toast(r.error); AudioSys.error(); return; }
+      toast('背景已应用');
+    });
+  });
+  $('btn-bg-clear').addEventListener('click', () => {
+    pendingBg = null;
+    $('bg-preview').classList.add('hidden');
+    socket.emit('set_bg', { dataUrl: null }, r => {
+      if (r && r.error) { toast(r.error); AudioSys.error(); }
+      else toast('背景已清除');
+    });
+  });
+
   // 修改结果弹层：由结果栏右侧 [+] 打开（大厅 renderLobby 动态绑定）
   $('btn-edit-cancel').addEventListener('click', () => $('modal-edit').classList.add('hidden'));
   $('btn-edit-save').addEventListener('click', () => {

@@ -9,9 +9,60 @@ const cfg = require('./config.js');
 
 const rooms = new Map();
 let io = null; // 由 init(io) 注入（broadcast 使用）
+let sweepTimer = null; // 房间回收扫描定时器（递归 setTimeout，便于测试动态调参）
 
 function init(ioRef) {
   io = ioRef;
+  startSweep();
+}
+
+/* ---------------- 房间 TTL 清理（防内存泄漏） ----------------
+ * 两类回收：
+ * 1) 闲置回收：有真人（在线且非托管）但长时间（ROOM_TTL_MS）无任何状态变更
+ *    → 状态变更统一经 broadcast()/touch() 刷新 lastActivity
+ * 2) 僵尸回收：全员掉线或托管（autoDraw 等自动推进会持续广播，lastActivity 永远新鲜，
+ *    故用墙钟 allOfflineSince 判断，不受自动广播影响），超 ZOMBIE_GRACE_MS 回收
+ */
+function touch(room) {
+  room.lastActivity = Date.now();
+}
+
+function destroyRoom(room, reason) {
+  clearTimeout(room.turnTimer);
+  clearTimeout(room.pickTimer);
+  clearTimeout(room.revealTimer);
+  clearTimeout(room.voteRevealTimer);
+  room.turnTimer = room.pickTimer = room.revealTimer = room.voteRevealTimer = null;
+  io.to(room.code).emit('room_closed', { reason }); // 客户端据此回首页并清理会话
+  rooms.delete(room.code);
+}
+
+function sweepTick() {
+  const ttl = Number(process.env.ROOM_TTL_MS) || cfg.ROOM_TTL_MS;
+  const grace = Number(process.env.ZOMBIE_GRACE_MS) || cfg.ZOMBIE_GRACE_MS;
+  const now = Date.now();
+  for (const room of rooms.values()) {
+    const hasHuman = room.players.some(p => p.online && !p.hosted);
+    if (!hasHuman) {
+      if (room.allOfflineSince == null) room.allOfflineSince = now;
+      else if (now - room.allOfflineSince > grace) destroyRoom(room, '全员离线或托管，房间已回收');
+    } else {
+      room.allOfflineSince = null;
+      if (now - (room.lastActivity || now) > ttl) destroyRoom(room, '长时间无活动，房间已回收');
+    }
+  }
+  scheduleSweep();
+}
+
+function scheduleSweep() {
+  const ms = Number(process.env.SWEEP_MS) || cfg.SWEEP_MS;
+  sweepTimer = setTimeout(sweepTick, ms); // 注意：调度的是 sweepTick，不是自己
+}
+
+function startSweep() { scheduleSweep(); }
+
+function stopSweep() {
+  if (sweepTimer) { clearTimeout(sweepTimer); sweepTimer = null; }
 }
 
 function genCode() {
@@ -124,6 +175,7 @@ function snapshot(room, forId) {
 }
 
 function broadcast(room) {
+  touch(room); // 任何状态广播都视为房间活动，刷新回收计时
   const sids = io.sockets.adapter.rooms.get(room.code);
   if (!sids) return;
   for (const sid of sids) {
@@ -167,6 +219,9 @@ function createRoom(results, socket, name, mode) {
     winnerStart: null,
     winnerResult: null,
     voteCounts: null, // 归票前为 null（空对象是 truthy 会误触发客户端动画）
+    bg: null, // 房主自定义像素化背景（dataURL；仅经 bg 事件下发，不进 snapshot）
+    lastActivity: Date.now(), // 回收计时：最近一次状态变更（broadcast/touch）
+    allOfflineSince: null, // 全员掉线/托管的起始时间（墙钟，防自动广播干扰）
   };
   rooms.set(code, room);
   addPlayer(room, socket, name);
@@ -404,4 +459,6 @@ module.exports = {
   startReveal,
   normName,
   normResults,
+  touch,
+  stopSweep,
 };

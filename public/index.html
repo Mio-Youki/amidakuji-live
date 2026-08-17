@@ -112,6 +112,16 @@
         </div>
         <div id="round-hint" class="share-hint" style="margin-top:6px"></div>
       </div>
+      <div class="panel host-only hidden" id="panel-bg">
+        <label>自定义背景（可选）</label>
+        <div class="share-hint">上传图片将像素化并以低透明度衬在画板下方，不影响走线</div>
+        <input type="file" id="in-bg" accept="image/*" class="file-input">
+        <canvas id="bg-preview" class="bg-preview hidden" width="192" height="144"></canvas>
+        <div class="row" style="margin-top:6px">
+          <button id="btn-bg-set" class="btn small">应用背景</button>
+          <button id="btn-bg-clear" class="btn small">清除背景</button>
+        </div>
+      </div>
       <div id="overflow-note" class="waiting-hint hidden">参与者多于选项数，超出者本轮将作为观众</div>
       <button id="btn-start" class="btn primary big host-only hidden">开始画线</button>
       <div id="waiting-hint" class="waiting-hint">等待房主开始…</div>
@@ -159,6 +169,7 @@
 <script src="audio.js"></script>
 <script src="voice.js"></script>
 <script src="board.js"></script>
+<script src="pixelate.js"></script>
 <script src="state.js"></script>
 <script src="net.js"></script>
 <script src="ui.js"></script>

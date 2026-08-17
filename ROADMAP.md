@@ -13,9 +13,11 @@
 |---|---|---|
 | 二维码邀请 | 房间码旁出 QR，扫码即入 | 半天 |
 | 中文像素字体 | Fusion Pixel 本地化（需网络下载，离线可用） | 1 天 |
-| 房间 TTL 清理 | 闲置 30 分钟回收，防内存泄漏 | 半天 |
+| 房间 TTL 清理 | ✅ **已完成**：闲置 30 分钟 / 全员离线托管 2 分钟回收，防内存泄漏（v0.14） | 已交付 v0.14 |
+| 保活监控（UptimeRobot） | ✅ **已完成**：内置 `GET /health` 保活端点 + DEPLOY §四 监控配置（5 分钟探测，实例不休眠） | 已交付 v0.14 |
 | 揭晓镜头特写 | 结果落定慢动作/放大/音效强化 | 1 天 |
 | 部署硬化 | ✅ **已完成**：README + start.bat/start.sh + Docker + render.yaml + DEPLOY.md（Render 公网部署） | 已交付 v0.9 |
+| 自定义像素化背景 | ✅ **已完成**：房主上传图片 → 像素化 → 低透明画板衬底（v0.13） | 已交付 v0.13 |
 | 语音参数微调 | 低通截止/门限/PLC 时长按实测微调（见 voicepublic.md 8.1） | 随反馈 |
 | 接收端谱降噪 | 播放前 8k FFT 频域门限，去残余嘶声 | 1~2 天 |
 
@@ -24,8 +26,8 @@
 | 项 | 说明 |
 |---|---|
 | **前后端模块拆分** | ✅ **已完成**：前端 state/net/ui/input + 后端 config/rooms/handlers/audio，均配地图文档与测试 |
-| **Vite + 可选 TypeScript** | ES Modules、热更新、构建压缩；TS 锁死 socket 消息结构 |
-| **UI 单元测试** | 画板渲染/动画抽纯函数 + Vitest/jsdom |
+| **Vite + 可选 TypeScript** | ✅ **类型地基已建立**（JSDoc typedef + tsconfig + `npm run typecheck`，渐进式 `// @ts-check`）；Vite 暂不上（保留零构建）；全量 TS 化待评估 |
+| **UI 单元测试** | 画板渲染/动画抽纯函数 + Vitest/jsdom（未来代办） |
 | **状态层抽象** | `RoomStore` 接口（内存实现 → 未来 Redis），对接架构设想 Phase C |
 | **Opus 编码 + RNNoise** | 带宽减半 + AI 级降噪（WebCodecs + wasm，Safari 降级 PCM） |
 | **可观测** | 房间/连接/请求计数日志，事故可回溯 |

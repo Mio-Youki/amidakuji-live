@@ -41,6 +41,7 @@ function attach(io, R, cleanupAudioBinding) {
       if (room.players.length >= 12) return ack({ error: '房间已满（最多 12 人）' });
       const p = R.addPlayer(room, socket, name);
       socket.join(code);
+      if (room.bg) socket.emit('bg', room.bg); // 补发当前背景（新加入者）
       ack({ ok: true, playerId: p.id });
       R.broadcast(room);
     });
@@ -56,8 +57,29 @@ function attach(io, R, cleanupAudioBinding) {
       const nn = R.normName(data && data.name);
       if (nn) p.name = nn;
       socket.join(code);
+      if (room.bg) socket.emit('bg', room.bg); // 断线重连补发背景
       ack({ ok: true, playerId: pid });
       R.broadcast(room);
+    });
+
+    socket.on('set_bg', (data, ack) => {
+      const room = roomOf();
+      const p = self();
+      if (!room || !p) return ack({ error: '不在房间中' });
+      if (p.id !== room.hostId) return ack({ error: '仅房主可操作' });
+      R.touch(room); // bg 不经 broadcast，需手动刷新回收计时
+      const url = data && data.dataUrl;
+      if (url == null) { // 清除背景
+        room.bg = null;
+        io.to(room.code).emit('bg', null);
+        return ack({ ok: true });
+      }
+      if (typeof url !== 'string' || !url.startsWith('data:image/') || url.length > 500000) {
+        return ack({ error: '图片数据无效或过大（≤500KB）' });
+      }
+      room.bg = url;
+      io.to(room.code).emit('bg', url);
+      ack({ ok: true });
     });
 
     socket.on('update_results', (data, ack) => {

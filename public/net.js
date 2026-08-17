@@ -95,6 +95,21 @@ socket.on('line_drawn', d => {
   else AudioSys.pen();
 });
 
+// 自定义像素化背景（含清除）：缓存 Image 并重绘画板
+socket.on('bg', url => {
+  if (url == null) {
+    PixelBG.clear();
+    if (S) drawBoard();
+    return;
+  }
+  const img = new Image();
+  img.onload = () => {
+    PixelBG.set(img);
+    if (S) drawBoard();
+  };
+  img.src = url;
+});
+
 socket.on('connect', () => {
   setConn(true);
   pending = false;
@@ -105,6 +120,14 @@ socket.on('connect', () => {
       else if (r && r.ok) meId = r.playerId;
     });
   }
+});
+
+// 房间被服务器回收（长时间无活动 / 全员离线托管）→ 回首页并清理会话
+socket.on('room_closed', d => {
+  toast('房间已回收：' + ((d && d.reason) || '长时间无活动'), 4000);
+  clearSession();
+  if (audioSocket && audioSocket.connected) audioSocket.disconnect();
+  resetToHome();
 });
 
 socket.on('connect_error', () => setConn(false));

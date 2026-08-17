@@ -104,7 +104,7 @@ sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 
 /* ---------------- 加载全部前端脚本（同一上下文，共享词法作用域） ---------------- */
-const files = ['game.js', 'audio.js', 'voice.js', 'board.js', 'state.js', 'net.js', 'ui.js', 'input.js', 'app.js'];
+const files = ['game.js', 'audio.js', 'voice.js', 'board.js', 'pixelate.js', 'state.js', 'net.js', 'ui.js', 'input.js', 'app.js'];
 let code = '';
 for (const f of files) {
   code += '\n;/* ==== ' + f + ' ==== */\n' + fs.readFileSync(path.join(__dirname, '..', 'public', f), 'utf8');

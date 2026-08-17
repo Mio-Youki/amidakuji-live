@@ -15,11 +15,14 @@
 | `public/game.js` | 阿弥陀籤纯逻辑（浏览器/Node 共用） | `Game.resolve/mapping/path` |
 | `public/audio.js` | chip tune 音效（Web Audio 合成） | `AudioSys.click/pen/turn/riser/fanfare/cheer/…` |
 | `public/voice.js` | 麦克风：音高检测、DSP 降噪、中继采集/播放 | `Voice.detectPitch/downsample/processInput/startRelay/playRelay` + 状态代理属性 |
-| `public/board.js` | Canvas 画板：几何、绘制、走线动画 | `COL`(画布配色)、`computeGeometry`、`draw`、`drawSlot/drawResult/drawMarker`、`drawVoteInfo`、`runReveal` |
+| `public/board.js` | Canvas 画板：几何、绘制、走线动画、自定义背景层 | `COL`(画布配色)、`computeGeometry`、`draw`、`drawSlot/drawResult/drawMarker`、`drawVoteInfo`、`runReveal`、`setBg` |
+| `public/pixelate.js` | **像素化背景**：图片降采样像素化 + 背景状态（`// @ts-check`） | `pickPixelatedSize`（纯函数，Node 可测）、`PixelBG.set/clear/pixelateFile` |
 | `public/state.js` | **状态层**：全局状态 + 基础工具（被后续模块依赖，必须先加载） | `S` `meId` `pickSel` `pending`；`isHost/myTurn/isSolo/canContinuous`、`toast/ackToast/escapeHtml/show/setHostUI/setConn`、`session/saveSession/clearSession` |
 | `public/net.js` | **网络层**：Socket.IO 连接/事件、语音中继通道、请求封装 | `socket` `audioSocket`、`emitAck`、`relayCaptureHandler`、`socket.on('state'…)`、`visibilitychange` |
 | `public/ui.js` | **界面层**：各阶段渲染、画板装配、倒计时、归票动画、退出清理 | `render*` 系列、`drawBoard`、`buildDrawControls`、`maybeStartVoteAnim`、`startCountdown/stopCountdown`、`resetToHome` |
 | `public/input.js` | **输入层**：画法状态与按住交互（点击/语音/吹气/倾斜/命运） | `drawMethod`、`startHold/holdLoop/endHold/updateMeter`、`methodHint` |
+| `public/types.js` | **类型定义（仅 JSDoc，无运行时）**：客户端状态模型 | `RoomState/PlayerState/BoardCfg/VoiceSample/SocketEvents` |
+| `public/globals.d.ts` | **全局声明（仅类型）**：外部全局与音频/画板/背景 API | `io`、`AudioSysApi/BoardApi/VoiceApi/PixelBGApi` |
 | `public/app.js` | **装配层（入口）**：交互绑定 + 初始化 | `bindEvents`、`fallbackCopy`、`init`、`DOMContentLoaded` |
 | `public/worklet-capture.js` | AudioWorklet 采集处理器 | `registerProcessor('capture-processor')` |
 | `public/demo.html` | 单人本地演示页（无服务器） | `drawStatic` / `run` / `?mode=flicker|end` |
@@ -65,6 +68,7 @@
 | 大厅：参与者列表 | 〃 | `ui.js renderLobby` → `#player-list`（P#/颜色点/房主/托管标签） | `.player-item .dot .tag` |
 | 大厅：结果列表 + [+]编辑 | 〃 | `ui.js renderLobby` → `#result-list`（房主见 `+` 打开弹层） | `.result-chip .add-chip` |
 | 大厅：配置（模式/轮次/笔画数） | 〃 | `ui.js renderLobby` 同步；`index.html #in-mode2 #btn-round #in-maxlines` | `.mode-row .mode-col .round-toggle` |
+| 大厅：自定义背景（上传/预览/应用/清除） | 〃 | `index.html #panel-bg #in-bg #bg-preview #btn-bg-set #btn-bg-clear`；`app.js bindEvents` 背景区；`pixelate.js PixelBG.pixelateFile` | `.file-input .bg-preview` |
 | 游戏横幅（画线/选点/揭晓提示） | `#screen-board` | `ui.js renderDrawing / renderPicking / renderReveal` → `#turn-banner` | `.banner .you` |
 | 画板（竖线/横线/槽/结果格/标记） | 〃 | `board.js draw()` + 子绘制函数 | `#board`（canvas） |
 | 控制栏：画法按钮/按住/仪表 | 〃 | `ui.js buildDrawControls` + `input.js startHold/holdLoop` → `#control-bar` | `.draw-methods .method-btn .hold-btn .hold-meter` |
@@ -81,6 +85,7 @@
 |---|---|
 | 整体配色/字体/圆角/CRT | `style.css`（`:root` 变量 + 组件样式） |
 | 画板线条颜色/格子/结果格样式 | `board.js` `COL` + `draw/drawSlot/drawResult` |
+| **自定义背景**（透明度/尺寸/像素化参数） | `board.js draw` 背景层（globalAlpha=0.25）+ `pixelate.js`（`MAX_DIM=192`、`MAX_DATAURL=500000`） |
 | 某个界面的**文案** | `ui.js` 对应 `render*` 函数里的 HTML 字符串 |
 | 按钮/横幅/列表的**布局尺寸** | `style.css` 对应组件类 |
 | 画板尺寸/间距 | `board.js computeGeometry` + `ui.js drawBoard` 高度公式 |
@@ -107,7 +112,9 @@ S = { myId, code, phase, N, results, lines, lineMeta, nextLevel, maxLines,
 **前端只读 `S` 渲染，绝不自行改游戏状态**；所有变更走 socket 事件。
 
 ### 5.2 Socket 事件（client→server）
-`create_room join_room rejoin update_results set_mode set_round set_maxlines start_drawing draw_line end_drawing end_turn pick_start leave_room restart reconfigure`＋音频通道 `bind / audio`＋`reveal_finished`（服务器在 `server.js` 逐一校验）。
+`create_room join_room rejoin update_results set_mode set_round set_maxlines set_bg start_drawing draw_line end_drawing end_turn pick_start leave_room restart reconfigure`＋音频通道 `bind / audio`＋`reveal_finished`（服务器在 `server.js` 逐一校验）。
+- **背景通道（server→client）**：`bg`（dataURL 或 null=清除）独立广播、不随快照下发；加入/重连时服务器单独补发（见 `net.js` `socket.on('bg')`）
+- **回收通道（server→client）**：`room_closed {reason}`——房间被 TTL 扫描回收（闲置/全员离线托管）时通知仍在房内的客户端；`net.js` 处理：toast + 清会话 + 断开音频 + 回首页
 
 ### 5.3 画板 cfg（`board.js draw(cfg)` 的入参）
 `{phase,N,M,lines,lineColors,lineAuto,nextLevel,results,myTurn,previewPair,guideColor,slotSel,myPick,pickedSlots,voteSlots,voteCounts,hostVoteStart,hostColor,voteCountAnim,revealed,markers}`——新增画板视觉元素时按需扩展。

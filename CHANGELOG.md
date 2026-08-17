@@ -1,9 +1,29 @@
 # 更新日志（CHANGELOG）
 
 > 所有版本均为 2026-08 的迭代产物。每条记录「功能 / 修复 / 验证」。
-> 测试基线：`npm test`（pitch 单测 + e2e 全场景）。
+> 测试基线：`npm test`（pitch/pixelate 单测 + 客户端冒烟 + e2e 全场景）。
 
-## v0.11 —— 后端模块化拆分（当前）
+## v0.14 —— 房间 TTL 清理 + 保活监控（当前）
+- **房间 TTL 清理（防内存泄漏）**：`config.js` 新增 `ROOM_TTL_MS`（闲置 30 分钟）/ `ZOMBIE_GRACE_MS`（全员掉线或托管 2 分钟）/ `SWEEP_MS`（扫描间隔 60s，均可环境变量覆盖）
+  - `rooms.js` 扫描线程两类回收：**闲置回收**（`lastActivity`，任何状态广播/`touch()` 刷新）+ **僵尸回收**（`allOfflineSince` 墙钟计时——托管 autoDraw 等自动推进会持续广播，lastActivity 永远新鲜，故用墙钟不受干扰）
+  - 回收时清空全部定时器并发 `room_closed` 事件（客户端据此回首页、清会话、断开音频通道）；服务器关闭时 `stopSweep()` 干净退出
+- **保活/健康检查**：新增 `GET /health`（返回 `{ok, uptime, rooms, ts}`）；UptimeRobot 监控该端点每 5 分钟探测，Render 免费实例（15 分钟无流量休眠）因此不再休眠，冷启动消失（DEPLOY §四）
+- **验证**：e2e 场景十一（闲置超 TTL 回收 + room_closed 通知全员）、场景十二（全员托管僵尸房回收，自动推进不干扰墙钟；已主动退出者不在房间内、不通知属正确语义）；期间修复扫描调度 bug（原 `scheduleSweep` 自我调度，`sweepTick` 从未执行）
+
+## v0.13 —— 自定义像素化背景
+- **房主上传图片作为画板背景**：`public/pixelate.js`（新模块，`// @ts-check`）——读文件 → 关闭平滑降采样（≤192px 等比）→ PNG dataURL（≤500KB），预览后应用
+- **画板衬底**：`board.js` 背景层（globalAlpha 0.25 + cover 铺满 + 关闭平滑保持色块风），低透明度保证走线/结果清晰
+- **协议**：`set_bg`（仅房主；null 清除；校验 data:image 前缀 + ≤500KB）→ 服务器存 `room.bg` → `bg` 事件广播；加入/断线重连补发；**不进快照**（避免每帧携带大载荷）
+- **生命周期**：背景随房间保留（再来一局/重开不丢），仅清除或销毁房间时消失
+- **验证**：`test/pixelate.js`（尺寸等比/上限/防 0 边）+ e2e 场景十（越权拒绝/非法/超限/广播/加入补发/重开保留/清除），`npm test` + `npm run typecheck` 全绿
+
+## v0.12 —— 协议/状态模型类型地基
+- **类型定义**：`public/types.js`（客户端 RoomState/PlayerState/BoardCfg/SocketEvents）、`public/globals.d.ts`（外部全局）、`types.d.ts`（服务端 Room/Player）
+- **渐进式 TS 检查**：`tsconfig.json` + `typescript` devDep + `npm run typecheck`（`tsc --noEmit`，仅检查 `// @ts-check` 文件，零运行时影响）
+- **示范**：`state.js` 已启用 `@ts-check`（状态模型吃上类型）；约定写入 CONTRIBUTING §7（新增代码必加 `// @ts-check` 并引用类型定义）
+- 不引入 Vite、不全量 TS 化（保留零构建定位）
+
+## v0.11 —— 后端模块化拆分
 - **后端拆分**：server.js（~800 行）拆为 `config.js`（常量）→ `rooms.js`（房间/状态机）→ `handlers.js`（事件）→ `audio.js`（语音中继）+ 瘦身 `server.js`（装配）；行为不变，io 由 server.js 注入
 - **附带修复**：`再来一局`（restart）在单轮模式下此前会丢失配额（quota=0），统一走 `startRound()` 后单轮重开正常
 - **后端地图**：`docs/BACKEND_MAP.md`（文件总览/依赖/规则位置/协议/测试），CONTRIBUTING 矩阵与 README 索引同步

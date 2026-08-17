@@ -1,3 +1,4 @@
+// @ts-check
 /* ============================================================
  * 状态层（state.js）：全局状态与基础工具
  * 依赖：audio.js / voice.js / board.js（AudioSys/Board/Voice 全局）
@@ -5,24 +6,29 @@
  * ============================================================ */
 'use strict';
 
+/** 全局 DOM 便捷函数（返回 any，避免对元素类型过度约束） @type {(id: string) => any} */
 const $ = id => document.getElementById(id);
 const LS = 'amida_session';
-const AudioSys = window.AudioSys;
-const Board = window.Board;
-const Voice = window.Voice;
 
 /* ---------------- 全局状态 ---------------- */
-let S = null;            // 房间状态快照
-let meId = null;         // 我的玩家 id（服务端分配，稳定）
-let pickSel = null;      // 选点阶段本地暂选的起点
+/** 房间状态快照（服务端 snapshot() 下发） @type {import('./types.js').RoomState | null} */
+let S = null;
+/** 我的玩家 id（服务端分配，稳定） @type {string | null} */
+let meId = null;
+/** 选点阶段本地暂选的起点 @type {number | null} */
+let pickSel = null;
+/** 画线预览位置 @type {number | null} */
 let previewPair = null;
 let revealRunning = false;
 let doneCheered = false;
 let pending = false;
+/** @type {ReturnType<typeof setInterval> | null} */
 let cdTimer = null;
 let lastTickSec = -1;
+/** @type {Record<number, boolean>} */
 let lastRevealed = {};
-let voteAnimRunning = false; // 投票归票计数动画
+/** 投票归票计数动画 @type {boolean} */
+let voteAnimRunning = false;
 
 /* ---------------- 会话 ---------------- */
 function session() {
@@ -56,6 +62,7 @@ function escapeHtml(s) {
   }[c]));
 }
 
+/** @type {ReturnType<typeof setTimeout> | null} */
 let toastTimer = null;
 function toast(msg, ms) {
   const el = $('toast');

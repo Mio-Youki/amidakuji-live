@@ -14,6 +14,7 @@
   let W = 0;
   let H = 0;
   let geom = null;
+  let bgImage = null; // 房主自定义像素化背景（低透明度衬底）
 
   const PAUSE = 0.16;   // 拐弯停顿（秒）
   const SPEED = 95;     // 下行速度（px/s）
@@ -270,6 +271,11 @@
     }
   }
 
+  // 设置自定义背景（null = 清除）。图片已像素化，放大时保持色块风
+  function setBg(img) {
+    bgImage = img || null;
+  }
+
   // 主绘制入口
   function draw(cfg) {
     const N = cfg.N;
@@ -277,6 +283,20 @@
     geom = computeGeometry(N, M);
     ctx.fillStyle = COL.bg;
     ctx.fillRect(0, 0, W, H);
+
+    // 自定义背景层：低透明度衬底，铺满画布（cover），保证走线清晰
+    if (bgImage) {
+      const iw = bgImage.width || 1;
+      const ih = bgImage.height || 1;
+      const scale = Math.max(W / iw, H / ih);
+      const dw = iw * scale;
+      const dh = ih * scale;
+      ctx.save();
+      ctx.globalAlpha = 0.25;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(bgImage, (W - dw) / 2, (H - dh) / 2, dw, dh);
+      ctx.restore();
+    }
 
     // 竖线
     for (let i = 0; i < N; i++) {
@@ -457,6 +477,7 @@
 
   Board.setup = setup;
   Board.resize = resize;
+  Board.setBg = setBg;
   Board.computeGeometry = computeGeometry;
   Board.draw = draw;
   Board.hitTest = hitTest;

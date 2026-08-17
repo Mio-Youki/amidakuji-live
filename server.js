@@ -21,6 +21,10 @@ app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: 0,
   setHeaders: res => res.setHeader('Cache-Control', 'no-cache, must-revalidate'),
 }));
+// 保活/健康检查端点：UptimeRobot 等外部监控每 5 分钟探测，顺带让 Render 免费实例不休眠
+app.get('/health', (req, res) => {
+  res.json({ ok: true, uptime: Math.round(process.uptime()), rooms: roomsApi.rooms.size, ts: Date.now() });
+});
 const server = http.createServer(app);
 const io = new Server(server);
 
@@ -28,6 +32,9 @@ const io = new Server(server);
 roomsApi.init(io);
 const audio = audioRelay.attach(io, roomsApi);
 handlers.attach(io, roomsApi, audio.cleanupAudioBinding);
+
+// 服务器关闭时停止房间回收扫描（测试进程可干净退出）
+server.on('close', () => roomsApi.stopSweep());
 
 if (require.main === module) {
   server.listen(cfg.PORT, cfg.HOST, () => {

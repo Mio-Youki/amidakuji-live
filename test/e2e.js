@@ -10,6 +10,7 @@ process.env.REVEAL_MS = '1200';
 process.env.REVEAL_GRACE_MS = '600';
 process.env.PICK_MS = '800';
 process.env.VOTE_REVEAL_MS = '600';
+process.env.SWEEP_MS = '120'; // 快速扫描；TTL/宽限在场景内动态调参
 
 const assert = require('assert');
 const { io } = require('socket.io-client');
@@ -554,6 +555,107 @@ const last = arr => arr[arr.length - 1];
     console.log('✓ 单轮模式：配额画线、回合内连续、结束本回合');
     clients.forEach(c => c.close());
     rooms.delete(roomR.code);
+  }
+
+  /* ============ 场景十：自定义像素化背景（set_bg / bg 广播 / 加入补发 / 校验） ============ */
+  {
+    const clients = await Promise.all([connect(port), connect(port)]);
+    const bgRecv = [];
+    clients[1].on('bg', url => bgRecv.push(url));
+    r = await emit(clients[0], 'create_room', { name: 'B1', results: ['甲', '乙', '丙'] });
+    assert.strictEqual(r.error, undefined);
+    const roomB = [...rooms.values()][0];
+    const codeB = roomB.code;
+    await emit(clients[1], 'join_room', { code: codeB, name: 'B2' });
+    await wait(80);
+    assert.strictEqual(bgRecv.length, 0, '无背景时加入不发送 bg 事件');
+    // 非房主设置被拒
+    r = await emit(clients[1], 'set_bg', { dataUrl: 'data:image/png;base64,AAAA' });
+    assert.ok(r.error, '非房主设置背景被拒');
+    // 非法数据被拒（非 data:image 前缀）
+    r = await emit(clients[0], 'set_bg', { dataUrl: 'http://evil.com/x.png' });
+    assert.ok(r.error, '非法图片数据被拒');
+    // 超限被拒（>500000 字符）
+    r = await emit(clients[0], 'set_bg', { dataUrl: 'data:image/png;base64,' + 'A'.repeat(600000) });
+    assert.ok(r.error, '过大图片被拒');
+    assert.strictEqual(roomB.bg, null, '失败请求不落库');
+    // 房主设置成功 → 全房广播
+    r = await emit(clients[0], 'set_bg', { dataUrl: 'data:image/png;base64,BBBB' });
+    assert.strictEqual(r.error, undefined);
+    assert.strictEqual(roomB.bg, 'data:image/png;base64,BBBB', '服务端存 bg');
+    await wait(80);
+    assert.strictEqual(last(bgRecv), 'data:image/png;base64,BBBB', '全员收到背景广播');
+    // 后来者加入 → 补发当前背景
+    const late = await connect(port);
+    const lateRecv = [];
+    late.on('bg', url => lateRecv.push(url));
+    await emit(late, 'join_room', { code: codeB, name: 'B3' });
+    await wait(80);
+    assert.strictEqual(last(lateRecv), 'data:image/png;base64,BBBB', '新加入者补发背景');
+    // 重开房间（reconfigure 回大厅）后背景保留
+    r = await emit(clients[0], 'reconfigure', {});
+    assert.strictEqual(r.error, undefined);
+    assert.strictEqual(roomB.bg, 'data:image/png;base64,BBBB', '重开后背景保留');
+    // 清除背景
+    r = await emit(clients[0], 'set_bg', { dataUrl: null });
+    assert.strictEqual(r.error, undefined);
+    assert.strictEqual(roomB.bg, null, '清除后置空');
+    await wait(80);
+    assert.strictEqual(last(bgRecv), null, '全员收到清除广播');
+    console.log('✓ 自定义背景：仅房主、校验、广播、加入补发、重开保留、清除');
+    clients.forEach(c => c.close());
+    late.close();
+    rooms.delete(roomB.code);
+  }
+
+  /* ============ 场景十一：房间闲置 TTL 回收 ============ */
+  {
+    process.env.ROOM_TTL_MS = '500'; // 动态调参：500ms 无活动即回收
+    const clients = await Promise.all([connect(port), connect(port)]);
+    const closedRecv = [];
+    clients[0].on('room_closed', d => closedRecv.push(d));
+    clients[1].on('room_closed', d => closedRecv.push(d));
+    r = await emit(clients[0], 'create_room', { name: 'T1', results: ['甲', '乙'] });
+    assert.strictEqual(r.error, undefined);
+    const roomT = [...rooms.values()][0];
+    const codeT = roomT.code;
+    await emit(clients[1], 'join_room', { code: codeT, name: 'T2' });
+    await wait(1000); // > 500ms 无活动 → 回收
+    assert.strictEqual(rooms.has(codeT), false, '闲置超 TTL 房间被回收');
+    assert.strictEqual(closedRecv.length, 2, '房内全员收到 room_closed');
+    assert.ok(/无活动/.test(closedRecv[0].reason), '回收原因提示无活动');
+    console.log('✓ 房间 TTL：闲置超时回收 + room_closed 通知全员');
+    clients.forEach(c => c.close());
+    delete process.env.ROOM_TTL_MS; // 恢复默认，避免影响后续场景
+  }
+
+  /* ============ 场景十二：僵尸房回收（全员掉线/托管） ============ */
+  {
+    process.env.ZOMBIE_GRACE_MS = '400'; // 动态调参：全员非人 400ms 即回收
+    const clients = await Promise.all([connect(port), connect(port)]);
+    const closedRecv = [];
+    clients[0].on('room_closed', d => closedRecv.push(d));
+    clients[1].on('room_closed', d => closedRecv.push(d));
+    r = await emit(clients[0], 'create_room', { name: 'Z1', results: ['甲', '乙'] });
+    assert.strictEqual(r.error, undefined);
+    const roomZ = [...rooms.values()][0];
+    const codeZ = roomZ.code;
+    await emit(clients[1], 'join_room', { code: codeZ, name: 'Z2' });
+    r = await emit(clients[0], 'start_drawing', {});
+    assert.strictEqual(r.error, undefined);
+    assert.strictEqual(roomZ.phase, 'drawing');
+    // 两人都在游戏中退出 → 全员托管，自动推进会持续广播，但墙钟计时不受影响
+    r = await emit(clients[0], 'leave_room', {});
+    assert.strictEqual(r.error, undefined);
+    r = await emit(clients[1], 'leave_room', {});
+    assert.strictEqual(r.error, undefined);
+    await wait(1000); // > 400ms 宽限 → 回收
+    assert.strictEqual(rooms.has(codeZ), false, '全员托管僵尸房被回收');
+    // room_closed 只发给仍在房间内的 socket；两位均已主动退出（退出时已清理会话），故收不到是正确语义
+    assert.strictEqual(closedRecv.length, 0, '已退出者不在房间内，无需通知');
+    console.log('✓ 僵尸房回收：全员掉线/托管（自动推进不干扰墙钟计时；已退出者不通知）');
+    clients.forEach(c => c.close());
+    delete process.env.ZOMBIE_GRACE_MS;
   }
 
   await new Promise(r2 => server.close(r2));

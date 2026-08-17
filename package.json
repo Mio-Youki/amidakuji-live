@@ -6,7 +6,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node test/pitch.js && node test/client-smoke.js && node test/e2e.js",
+    "test": "node test/pitch.js && node test/pixelate.js && node test/client-smoke.js && node test/e2e.js",
+    "typecheck": "tsc --noEmit",
     "test:pitch": "node test/pitch.js",
     "test:smoke": "node test/client-smoke.js"
   },
@@ -18,6 +19,7 @@
     "socket.io": "^4.7.5"
   },
   "devDependencies": {
-    "socket.io-client": "^4.7.5"
+    "socket.io-client": "^4.7.5",
+    "typescript": "^7.0.2"
   }
 }
