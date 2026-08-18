@@ -91,7 +91,9 @@ socket.on('state', s => {
 });
 
 socket.on('line_drawn', d => {
-  if (d.auto) AudioSys.autoPen();
+  // 音效共享：明道/暗轨/待命对外反馈一致（不区分 kind，防止靠声音分辨行动类型）；
+  // 仅"自动施工"（托管/超时）有独立音效——那是公开信息
+  if (d && d.auto) AudioSys.autoPen();
   else AudioSys.pen();
 });
 

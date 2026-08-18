@@ -27,8 +27,8 @@ let cdTimer = null;
 let lastTickSec = -1;
 /** @type {Record<number, boolean>} */
 let lastRevealed = {};
-/** 投票归票计数动画 @type {boolean} */
-let voteAnimRunning = false;
+/** 投票归票计数动画（由 ui.js 环境动画循环推进） @type {boolean} */
+let voteAnimRunning = false; // 保留：兼容性占位（旧版由独立 rAF 循环驱动）
 
 /* ---------------- 会话 ---------------- */
 function session() {

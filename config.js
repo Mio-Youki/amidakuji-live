@@ -14,6 +14,9 @@ module.exports = {
   ROOM_TTL_MS: Number(process.env.ROOM_TTL_MS || 30 * 60 * 1000),     // 房间闲置回收：无任何状态变更超过该时长
   ZOMBIE_GRACE_MS: Number(process.env.ZOMBIE_GRACE_MS || 2 * 60 * 1000), // 全员掉线/托管宽限：之后回收（防僵尸房）
   SWEEP_MS: Number(process.env.SWEEP_MS || 60 * 1000),                // 回收扫描间隔（测试可调小）
+  // 雾幕纠缠度：最新三条行动的和 ≥ FOG_TRIGGER 时，在这三条画线对应层级生成覆盖整行的雾区
+  ENTANGLE: { OPEN: 1, DARK: 1.5, SKIP: 0, REPEAT: 0.5 }, // 显手/暗手/skip 基础值；与上一条画线同轨道额外 +REPEAT
+  FOG_TRIGGER: Number(process.env.FOG_TRIGGER || 4),
   MODES: ['individual', 'host', 'vote'],
   ROUND_MODES: ['multi', 'single'],
   MAXLINES_OPTIONS: [20, 40, 80],

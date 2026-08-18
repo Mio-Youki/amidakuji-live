@@ -97,6 +97,19 @@ function attach(io, R, cleanupAudioBinding) {
       R.broadcast(room);
     });
 
+    socket.on('set_fog', (data, ack) => {
+      const room = roomOf();
+      const p = self();
+      if (!room || !p) return ack({ error: '不在房间中' });
+      if (p.id !== room.hostId) return ack({ error: '仅房主可操作' });
+      if (room.phase !== 'lobby') return ack({ error: '仅开局前可修改' });
+      const fog = data && data.fog;
+      if (typeof fog !== 'boolean') return ack({ error: '无效设置' });
+      room.fog = fog;
+      ack({ ok: true });
+      R.broadcast(room);
+    });
+
     socket.on('start_drawing', (data, ack) => {
       const room = roomOf();
       const p = self();
@@ -117,10 +130,21 @@ function attach(io, R, cleanupAudioBinding) {
       if (room.phase !== 'drawing') return ack({ error: '当前不在画线阶段' });
       const cur = room.players[room.turnIdx];
       if (!cur || cur.socketId !== socket.id) return ack({ error: '还没轮到你' });
+      const kind = data && data.kind; // 'open' 扳道岔 | 'dark' 暗轨施工 | 'skip' 工务组待命
+      if (kind !== 'open' && kind !== 'dark' && kind !== 'skip') return ack({ error: '无效行动类型' });
+      const slot = R.nextSlotOf(room, cur);
+      if (slot == null) return ack({ error: '没有可行动的层级' });
+      if (kind === 'skip') {
+        if (cur.skipLeft <= 0) return ack({ error: '工务组待命次数已用完' });
+        ack({ ok: true });
+        R.takeAction(room, cur, 'skip', null, false, slot);
+        return;
+      }
       const pair = Number(data && data.pair);
       if (!Number.isInteger(pair) || pair < 0 || pair >= room.N - 1) return ack({ error: '无效位置' });
+      if (kind === 'dark' && cur.darkLeft <= 0) return ack({ error: '暗轨施工次数已用完' });
       ack({ ok: true });
-      R.advanceAfterLine(room, pair, false);
+      R.takeAction(room, cur, kind, pair, false, slot);
     });
 
     socket.on('end_drawing', (data, ack) => {
@@ -215,17 +239,6 @@ function attach(io, R, cleanupAudioBinding) {
       R.broadcast(room);
     });
 
-    socket.on('end_turn', (data, ack) => {
-      const room = roomOf();
-      const p = self();
-      if (!room || !p) return ack({ error: '不在房间中' });
-      if (room.phase !== 'drawing' || room.roundMode !== 'single') return ack({ error: '当前不可结束本回合' });
-      const cur = room.players[room.turnIdx];
-      if (!cur || cur.socketId !== socket.id) return ack({ error: '还没轮到你' });
-      ack({ ok: true });
-      R.nextTurn(room);
-    });
-
     socket.on('reveal_finished', (data, ack) => {
       const room = roomOf();
       const p = self();
@@ -262,12 +275,12 @@ function attach(io, R, cleanupAudioBinding) {
       clearTimeout(room.revealTimer);
       clearTimeout(room.pickTimer);
       room.phase = 'lobby';
-      room.lines = [];
-      room.lineMeta = [];
+      room.levels = new Array(room.maxLines).fill(null);
+      room.acted = new Set();
       room.nextLevel = 0;
-      room.turnLines = 0;
-      room.playerLines = {};
-      room.quota = 0;
+      room.slotOwner = new Array(room.maxLines).fill(null);
+      room.fogLevels = new Set();
+      for (const pl of room.players) { pl.darkLeft = 0; pl.skipLeft = 0; }
       room.picks = {};
       room.pickedStarts.clear();
       room.startedAt = null;

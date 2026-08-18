@@ -6,6 +6,7 @@
 'use strict';
 
 let drawMethod = 'tap';   // tap | voice | blow | shake | destiny
+let actionKind = 'open';  // open 扳道岔（显手）| dark 暗轨施工（暗手）| skip 工务组待命
 let holdActive = false;
 let holdRaf = 0;
 let lastPair = null;
@@ -82,10 +83,10 @@ function holdLoop() {
     }
   }
   drawBoard();
-  // 连续画线：单人 或 单轮模式下，按住期间每 450ms 自动落一笔（记录音高/气力/倾角变化）
+  // 连续施工：单人 或 单轮模式下，按住期间每 450ms 自动占一槽（记录音高/气力/倾角变化）
   if (holdActive && canContinuous() && lastPair != null && performance.now() - lastDrawT > 450) {
     lastDrawT = performance.now();
-    socket.emit('draw_line', { pair: lastPair }, r => {
+    socket.emit('draw_line', { kind: actionKind, pair: lastPair }, r => {
       if (r && r.error) { endHold(); toast(r.error); }
     });
   }
@@ -100,7 +101,7 @@ function endHold() {
   if (drawMethod !== 'tap' && drawMethod !== 'destiny') {
     if (!canContinuous()) {
       if (lastPair != null) {
-        socket.emit('draw_line', { pair: lastPair }, r => { if (r && r.error) { toast(r.error); AudioSys.error(); } });
+        socket.emit('draw_line', { kind: actionKind, pair: lastPair }, r => { if (r && r.error) { toast(r.error); AudioSys.error(); } });
       } else {
         toast('未检测到有效输入');
       }

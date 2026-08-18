@@ -170,6 +170,13 @@ function bindEvents() {
     });
   });
 
+  // 夜色雾开关（房主在开局前可改）
+  $('btn-fog').addEventListener('click', () => {
+    socket.emit('set_fog', { fog: !(S && S.fog !== false) }, r => {
+      if (r && r.error) { toast(r.error); AudioSys.error(); }
+    });
+  });
+
   // 麦克风自测：录 1 秒回放，自动探测可用的广播路径并记住
   $('btn-mic-test').addEventListener('click', async () => {
     const out = $('mic-test-result');
@@ -235,7 +242,7 @@ function bindEvents() {
     const hit = Board.hitTest(x, y);
     if (S.phase === 'drawing') {
       if (myTurn() && drawMethod === 'tap' && hit.pair != null) {
-        socket.emit('draw_line', { pair: hit.pair }, r => {
+        socket.emit('draw_line', { kind: actionKind, pair: hit.pair }, r => {
           if (r && r.error) { toast(r.error); AudioSys.error(); }
         });
         previewPair = null;

@@ -15,51 +15,100 @@
   let H = 0;
   let geom = null;
   let bgImage = null; // 房主自定义像素化背景（低透明度衬底）
+  let lineShrink = 0; // 横线两端缩进比例（回放静态图高度压缩时防糊）
 
   const PAUSE = 0.16;   // 拐弯停顿（秒）
   const SPEED = 95;     // 下行速度（px/s）
   const REVEAL_MAX = 20; // 揭晓总时长上限（秒）：最长路径超过则统一降速
+  const FOG_WINDOW = 5;  // 标准模式可见窗口：底部最近 5 槽（含空槽），之上沉入夜色
 
-  // 像素化消隐：画线/选点阶段，线条以像素块方式逐块溶解隐现
-  // （揭晓/完成阶段全部永久显示）。线条会周期性整线消失，出现时边缘逐块溶解。
-  const flickerMap = new Map();
-  const DISS_IN = 0.30;   // 溶解入场时长（秒）
-  const DISS_OUT = 0.30;  // 溶解出场时长（秒）
-  function randPerm(n) {
-    const arr = [];
-    for (let i = 0; i < n; i++) arr.push(i);
-    let seed = (n * 2654435761 + 1013904223) >>> 0;
-    for (let i = n - 1; i > 0; i--) {
-      seed = (seed * 1103515245 + 12345) >>> 0;
-      const j = seed % (i + 1);
-      const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+  // 夜色/蒸汽雾：覆盖旧层级，降低过去视野信息的可见性（防推演）
+  // 标准模式：画线/选点阶段从上至下蔓延（覆盖至画布顶部，保留底部 5 槽视野；
+  //   起点槽/归票信息浮在雾上，带呼吸灯）；揭晓阶段被车头灯照亮、随标记下移消散
+  // 单轮模式 / 迷雾关闭：无雾，视野信息全程可见（反推演交给暗轨）
+  // 2-bit 动态：4 帧两档亮度噪点轮换，形成低成本的"蒸汽闪烁"
+  let fogFrames = null;
+  function ensureFogFrames() {
+    if (fogFrames) return fogFrames;
+    fogFrames = [];
+    for (let f = 0; f < 4; f++) {
+      const c = document.createElement('canvas');
+      c.width = 64;
+      c.height = 64;
+      const g = c.getContext('2d');
+      if (!g) { fogFrames.push(null); continue; }
+      const img = g.createImageData(64, 64);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const v = Math.random();
+        const on = v < 0.2 ? 2 : (v < 0.36 ? 1 : 0); // 2-bit：两档亮度 + 透明
+        if (on === 0) { img.data[i + 3] = 0; continue; }
+        const lum = on === 2 ? [186, 196, 220] : [124, 134, 166];
+        img.data[i] = lum[0];
+        img.data[i + 1] = lum[1];
+        img.data[i + 2] = lum[2];
+        img.data[i + 3] = on === 2 ? 115 : 85;
+      }
+      g.putImageData(img, 0, 0);
+      fogFrames.push(ctx.createPattern(c, 'repeat'));
     }
-    return arr;
+    return fogFrames;
   }
-  function dissolveBlocks(l, numBlocks, now) {
-    let f = flickerMap.get(l);
-    if (!f) {
-      const durV = 600 + Math.random() * 600;
-      const durH = 400 + Math.random() * 450;
-      // 初始相位随机：第一帧就有线条处于隐藏/溶解中途，防推演
-      f = {
-        w0: now - Math.random() * (durV + durH),
-        durV,
-        durH,
-        order: randPerm(numBlocks),
-      };
-      flickerMap.set(l, f);
+  // 绘制雾区 [y0, y1)：夜色底色 + 2bit 动态噪点 + 底部渐变过渡
+  function drawFog(y0, y1) {
+    if (y1 <= y0) return;
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = '#04060f';
+    ctx.fillRect(0, Math.round(y0), W, Math.round(y1 - y0));
+    const frames = ensureFogFrames();
+    const fi = Math.floor(performance.now() / 220) % frames.length;
+    const p = frames[fi];
+    if (p) {
+      ctx.globalAlpha = 0.6;
+      ctx.fillStyle = p;
+      ctx.fillRect(0, Math.round(y0), W, Math.round(y1 - y0));
     }
-    const cycle = f.durV + f.durH;
-    const t = (now - f.w0) % cycle;
-    const vis = new Array(numBlocks);
-    if (t >= f.durV) { vis.fill(false); return vis; } // 整线隐藏窗口
-    for (let i = 0; i < numBlocks; i++) {
-      const appear = (f.order[i] / numBlocks) * DISS_IN;
-      const depart = f.durV - (f.order[i] / numBlocks) * DISS_OUT;
-      vis[i] = t >= appear && t < depart;
+    // 底部渐变过渡（雾消散边界，替代硬边线）
+    const fade = 26;
+    const gr = ctx.createLinearGradient(0, y1 - fade, 0, y1);
+    gr.addColorStop(0, 'rgba(4,6,15,0.95)');
+    gr.addColorStop(1, 'rgba(4,6,15,0)');
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = gr;
+    ctx.fillRect(0, Math.round(y1 - fade), W, fade);
+    ctx.restore();
+  }
+
+  // 雾幕区：glitch 风格整行噪点（与夜色雾的"蒸汽"不同的"故障雪花"）
+  // 覆盖整行的带宽随层级间距自适应；彩色位移细条 + 破损扫描线，时间驱动动画
+  function drawGlitchBand(y) {
+    const t = performance.now();
+    const h = Math.max(12, Math.min(26, geom.step * 0.7));
+    const top = y - h / 2;
+    ctx.save();
+    // 暗底
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = '#0d0b1a';
+    ctx.fillRect(0, Math.round(top), W, h);
+    // 故障横条：彩色位移细条（时间驱动伪随机）
+    const cols = ['#4dc3ff', '#ff5fa8', '#e8ecff', '#7dff5f'];
+    for (let i = 0; i < 8; i++) {
+      const yy = top + ((i * 17 + Math.floor(t / 80) * 7) % h);
+      const len = 12 + ((i * 29 + Math.floor(t / 110) * 13) % 40);
+      const xx = (i * 53 + Math.floor(t / 130) * 19) % Math.max(1, W - len);
+      ctx.globalAlpha = 0.5 + 0.4 * (((i + Math.floor(t / 180)) % 2));
+      ctx.fillStyle = cols[i % cols.length];
+      ctx.fillRect(Math.round(xx), Math.round(yy), len, 1 + (i % 3));
     }
-    return vis;
+    // 上/下边缘：破损扫描线
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = '#6a7ad0';
+    for (let x = 0; x < W; x += 8) {
+      const off = ((x + Math.floor(t / 150) * 5) % 3) - 1;
+      ctx.fillRect(x, Math.round(top) + off, 5, 1);
+      ctx.fillRect(x + 3, Math.round(top + h) - 1 + off, 5, 1);
+    }
+    ctx.restore();
   }
 
   const COL = {
@@ -121,10 +170,11 @@
     return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
   }
 
-  // 横向线段（带 2px 描边）
+  // 横向线段（带 2px 描边；lineShrink>0 时两端缩进，回放静态图用）
   function seg(x1, y, x2, fill, dark) {
-    px(x1 - 1, y - 4, x2 - x1 + 2, 10, dark);
-    px(x1 + 1, y - 2, x2 - x1 - 2, 6, fill);
+    const sh = (x2 - x1) * (lineShrink || 0) / 2;
+    px(x1 - 1 + sh, y - 4, x2 - x1 + 2 - sh * 2, 10, dark);
+    px(x1 + 1 + sh, y - 2, x2 - x1 - 2 - sh * 2, 6, fill);
   }
 
   function wrapText(text, maxW, maxLines) {    ctx.font = '11px "Fusion Pixel 12px","Microsoft YaHei",sans-serif';
@@ -155,6 +205,11 @@
     // 已被他人选择的起点：用该玩家颜色描边（各自选择模式互斥可见）
     const takenColor = cfg.pickedSlots && cfg.pickedSlots[i];
     const border = selected ? COL.sel : (takenColor || COL.slotBorder);
+    // 呼吸灯：起点槽浮在夜色雾上，光环随 sin 时间脉动
+    const t = performance.now() / 1000;
+    const glow = 0.5 + 0.5 * Math.sin(t * 2.4 + i * 0.7);
+    px(sx - 4, y - 4, w + 8, h + 8, hexToRgba(border, 0.08 + 0.10 * glow));
+    px(sx - 2, y - 2, w + 4, h + 4, hexToRgba(border, 0.30 + 0.32 * glow));
     px(sx - 2, y - 2, w + 4, h + 4, '#000');
     px(sx, y, w, h, selected ? COL.selDark : (takenColor ? '#241d08' : COL.slotBg));
     px(sx, y, w, 2, border);
@@ -298,53 +353,157 @@
       ctx.restore();
     }
 
-    // 竖线
-    for (let i = 0; i < N; i++) {
-      const x = geom.xOf(i);
-      px(x - 2, geom.mTop - 14, 6, geom.bottomY - geom.mTop + 22, COL.lineDark);
-      px(x, geom.mTop - 12, 4, geom.bottomY - geom.mTop + 18, COL.line);
+    // 雾区边界（像素）：
+    // 画线/选点 = 雾从画布顶部向下覆盖 [0, fogY0)，保留底部最近 5 槽视野（起点槽/归票信息浮在雾上）
+    // 揭晓 = 保持画线结束时的雾状态：雾区 [车头灯前沿, 画线雾边界]，车头灯自上而下逐步照亮消散
+    const levels = cfg.levels || [];
+    const isReveal = cfg.phase === 'reveal';
+    const revealFogY = cfg.revealFogY != null ? cfg.revealFogY : null;
+    const revealFogBottom = cfg.revealFogBottom != null ? cfg.revealFogBottom : null; // 画线结束时的夜色雾边界
+    const fogOn = cfg.fog !== false;
+    // 底部可见窗口（画线/选点/揭晓均保留最近 5 槽）
+    const winStart = Math.max(0, (cfg.nextLevel || 0) - FOG_WINDOW);
+    let fogStart = 0; // 画线/选点：雾覆盖的层级 [0, fogStart)
+    if (fogOn && !isReveal && (cfg.phase === 'drawing' || cfg.phase === 'picking') && cfg.roundMode !== 'single') {
+      fogStart = winStart;
+    }
+    let fogRegion = null; // [y0, y1] 夜色雾像素区
+    if (fogOn && isReveal && revealFogY != null) {
+      const fb = revealFogBottom != null ? revealFogBottom : geom.bottomY;
+      if (revealFogY < fb) fogRegion = [revealFogY, fb];
+    } else if (fogOn && fogStart > 0) {
+      fogRegion = [0, geom.yOfLevel(fogStart) - geom.step / 2]; // 覆盖至画布顶部（起点槽浮于雾上）
     }
 
-    // 横线（玩家颜色；自动笔半透明；画线/选点阶段像素化溶解隐现）
-    const flickerPhase = cfg.phase === 'drawing' || cfg.phase === 'picking';
-    let flickNow = 0;
-    if (flickerPhase) {
-      if (cfg.lines.length === 0) flickerMap.clear(); // 新一局清空溶解状态
-      flickNow = performance.now();
-    }
-    const auto = cfg.lineAuto || [];
-    for (let l = 0; l < cfg.lines.length; l++) {
-      const p = cfg.lines[l];
-      const y = geom.yOfLevel(l);
-      const x1 = geom.xOf(p);
-      const x2 = geom.xOf(p + 1);
-      const isAuto = !!auto[l];
-      // 玩家颜色（缺省黄色），自动笔降透明度以示区分
-      const base = (cfg.lineColors && cfg.lineColors[l]) || (isAuto ? COL.auto : COL.horiz);
-      const fill = isAuto ? hexToRgba(base, 0.45) : base;
-      const dark = isAuto ? hexToRgba(base, 0.22) : hexToRgba(base, 0.55);
-      const solid = cfg.phase === 'reveal' || cfg.phase === 'done' || (cfg.phase === 'drawing' && l === cfg.lines.length - 1);
-      if (solid) {
-        seg(x1, y, x2, fill, dark);
+    // 竖线：正常/暗淡按雾区切分（揭晓时雾区在车头灯与画线边界之间）
+    for (let i = 0; i < N; i++) {
+      const x = geom.xOf(i);
+      const segs = [];
+      const yEnd = geom.bottomY + 8;
+      if (fogRegion) {
+        const [fy0, fy1] = fogRegion;
+        segs.push([geom.mTop - 14, Math.max(geom.mTop - 14, Math.min(fy0, yEnd)), false]);
+        segs.push([Math.max(geom.mTop - 14, fy0), Math.min(fy1, yEnd), true]);
+        segs.push([Math.max(geom.mTop - 14, fy1), yEnd, false]);
       } else {
-        const nb = Math.max(4, Math.floor((x2 - x1) / 6));
-        const vis = dissolveBlocks(l, nb, flickNow);
+        segs.push([geom.mTop - 14, yEnd, false]);
+      }
+      for (const [a, b, dim] of segs) {
+        if (b <= a) continue;
+        if (dim) { px(x - 2, a, 6, b - a, '#151a35'); px(x, a, 4, b - a, '#232a52'); }
+        else { px(x - 2, a, 6, b - a, COL.lineDark); px(x, a, 4, b - a, COL.line); }
+      }
+    }
+
+    // 雾幕区：纠缠度超标生成的整行雾区（glitch 风格）；他人视角的雾区线已由快照过滤为空槽
+    const fogSet = new Set(cfg.fogLevels || []);
+    lineShrink = cfg.lineShrink || 0;
+
+    // 横线（按层级槽；玩家颜色；自动笔半透明；暗轨同明轨受雾影响——被雾覆盖即不可见）
+    const isRevealOrDone = isReveal || cfg.phase === 'done';
+    for (let k = 0; k < Math.min(levels.length, M); k++) {
+      const lv = levels[k];
+      if (!lv) continue;
+      // 揭晓：底部窗口恒可见 + 车头灯上方已照亮区可见；无夜色雾（单轮/迷雾关）→ 全部轨道可见（雾幕仍随列车擦除）
+      const visible = isReveal
+        ? (revealFogY == null ? true : (k >= winStart || geom.yOfLevel(k) < revealFogY + 3))
+        : (k >= fogStart && (revealFogY == null || geom.yOfLevel(k) < revealFogY + 3));
+      if (lv.hidden) {
+        // 暗轨揭示规则：done 全显；reveal 仅"我的列车已触发"或"我铺设的"显示为暗轨样式；画线/选点=本人数据直画
+        if (isRevealOrDone) {
+          const darkShown = cfg.phase === 'done'
+            || (cfg.darkRevealed && (cfg.darkRevealed.has(k) || lv.playerId === cfg.meId));
+          if (!darkShown) continue; // 未触发且非本人铺设 → 隐藏（列车触发时才显现，带音效）
+        }
+      }
+      if (!visible) continue; // 雾遮蔽：暗轨与明轨一致——被夜色雾/雾幕覆盖即不可见
+      const y = geom.yOfLevel(k);
+      const x1 = geom.xOf(lv.pair);
+      const x2 = geom.xOf(lv.pair + 1);
+      const pl = cfg.lineColors && cfg.lineColors[lv.playerId];
+      const base = pl || (lv.auto ? COL.auto : COL.horiz);
+      const fill = lv.auto ? hexToRgba(base, 0.45) : base;
+      const dark = lv.auto ? hexToRgba(base, 0.22) : hexToRgba(base, 0.55);
+      if (lv.hidden) {
+        // 暗轨样式：虚线 + 「暗」标注
+        const nb = Math.max(3, Math.floor((x2 - x1) / 14));
         for (let b = 0; b < nb; b++) {
-          if (!vis[b]) continue;
+          if (b % 2 === 1) continue;
           const bx1 = x1 + (b * (x2 - x1)) / nb;
-          const bw = (x2 - x1) / nb + 1;
-          px(bx1, y - 2, bw, 6, fill);
+          px(bx1, y - 2, (x2 - x1) / nb + 1, 6, dark);
+          px(bx1 + 1, y - 1, (x2 - x1) / nb - 1, 4, fill);
+        }
+        px((x1 + x2) / 2 - 7, y - 14, 14, 10, '#000');
+        ctx.fillStyle = fill;
+        ctx.font = '8px "Press Start 2P", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('暗', (x1 + x2) / 2, y - 9);
+      } else {
+        seg(x1, y, x2, fill, dark);
+      }
+    }
+
+    // 单轮：当前施工玩家的剩余槽位标记（左缘色块）
+    if (cfg.phase === 'drawing' && cfg.roundMode === 'single' && cfg.slotOwner && cfg.turnPlayerId) {
+      for (let k = 0; k < Math.min(levels.length, M); k++) {
+        if (cfg.slotOwner[k] === cfg.turnPlayerId && !levels[k]) {
+          px(4, geom.yOfLevel(k) - 3, 5, 6, cfg.turnColor || COL.horiz);
         }
       }
     }
 
-    // 画线阶段的当前层虚线 + 预览（颜色跟随当前画线玩家）
-    if (cfg.phase === 'drawing' && cfg.nextLevel < M) {
-      const y = geom.yOfLevel(cfg.nextLevel);
+    // 画线阶段的当前施工层虚线 + 预览（颜色跟随当前画线玩家）
+    if (cfg.phase === 'drawing' && cfg.nextSlot != null && cfg.nextSlot < M) {
+      const y = geom.yOfLevel(cfg.nextSlot);
       const gcol = cfg.guideColor || COL.guide;
       for (let x = 10; x < W - 10; x += 12) px(x, y - 1, 3, 3, gcol);
       if (cfg.myTurn && cfg.previewPair != null) {
         seg(geom.xOf(cfg.previewPair), y, geom.xOf(cfg.previewPair + 1), hexToRgba(gcol, 0.85), hexToRgba(gcol, 0.4));
+      }
+    }
+
+    // 雾幕区 glitch 噪点（画线/选点：全部保留；揭晓：随车头灯前沿经过逐步擦除——与夜色雾一致，单轮同样生效）
+    if (fogSet.size && cfg.phase !== 'done') {
+      for (const k of fogSet) {
+        if (k < 0 || k >= M) continue;
+        if (isReveal && cfg.revealFront != null && geom.yOfLevel(k) < cfg.revealFront + 3) continue; // 已被车头灯照亮，擦除故障
+        drawGlitchBand(geom.yOfLevel(k));
+      }
+    }
+    // 夜色雾覆盖在雾幕之上（夜色雾可盖住 glitch）；暗轨同明轨——被任意雾覆盖即不可见
+    if (fogRegion) drawFog(fogRegion[0], fogRegion[1]);
+
+    // 事故调查回放：所选列车的轨迹（透明路径 + 外发光，颜色=玩家对应色）
+    if (cfg.traceStart != null && !isReveal) {
+      const tp = Game.path(N, cfg.levels || cfg.lines, cfg.traceStart,
+        { topY: geom.topY - 8, bottomY: geom.bottomY + 8, yOfLevel: k => geom.yOfLevel(k) });
+      if (tp.length) {
+        const tc = cfg.traceColor || COL.horiz;
+        const traceSegs = () => {
+          ctx.beginPath();
+          for (const s of tp) {
+            if (s.type === 'down') { ctx.moveTo(geom.xOf(s.line), s.y0); ctx.lineTo(geom.xOf(s.line), s.y1); }
+            else { ctx.moveTo(geom.xOf(s.line0), s.y); ctx.lineTo(geom.xOf(s.line1), s.y); }
+          }
+        };
+        ctx.save();
+        ctx.lineJoin = 'miter';
+        // 外发光：宽透明光晕层（在下）
+        for (const [w, a] of [[11, 0.10], [7, 0.20]]) {
+          ctx.strokeStyle = hexToRgba(tc, a);
+          ctx.lineWidth = w;
+          traceSegs();
+          ctx.stroke();
+        }
+        // 核心：shadowBlur 光晕 + 高亮实线（在上）
+        ctx.shadowColor = hexToRgba(tc, 0.9);
+        ctx.shadowBlur = 10;
+        ctx.strokeStyle = hexToRgba(tc, 0.9);
+        ctx.lineWidth = 3;
+        traceSegs();
+        ctx.stroke();
+        ctx.restore();
       }
     }
 
@@ -411,7 +570,7 @@
   let revealActive = false;
   let revealRaf = 0;
 
-  function runReveal(cfg, onFlip) {
+  function runReveal(cfg, onFlip, onDarkTrigger) {
     return new Promise(resolve => {
       const N = cfg.N;
       const M = cfg.M;
@@ -420,9 +579,23 @@
       const geo = { topY: g.topY - 8, bottomY: g.bottomY + 8, yOfLevel: k => g.yOfLevel(k) };
 
       const markers = cfg.markers.map(mk => {
-        const segs = Game.path(N, cfg.lines, mk.start, geo);
+        const segs = Game.path(N, cfg.levels || cfg.lines, mk.start, geo);
         return { ...mk, segs, flipped: false };
       });
+      // 揭晓起始：保持画线结束时的夜色雾状态（雾区 = 车头灯前沿 → 画线雾边界），随标记下移逐步照亮消散
+      // （单轮/迷雾关闭无夜色雾 → 直接全显）
+      const hasFog = cfg.roundMode !== 'single' && cfg.fog !== false;
+      const fogStart0 = hasFog ? Math.max(0, (cfg.nextLevel || 0) - FOG_WINDOW) : 0;
+      const revealFogBottom = hasFog && fogStart0 > 0 ? g.yOfLevel(fogStart0) - g.step / 2 : null;
+
+      // 暗轨揭示：我的列车（individual=我的 marker / group=唯一 marker）实际经过的暗轨层级，
+      // 车头灯到达该层时触发显现（区别于整行迷雾擦除），伴随特殊音效；我铺设的暗轨从头保留暗轨样式
+      const darkTriggers = new Set();
+      if (cfg.myStart != null) {
+        const crossed = Game.trackPath(cfg.levels || cfg.lines, cfg.myStart);
+        for (const c of crossed) if (c.hidden) darkTriggers.add(c.level);
+      }
+      const darkRevealed = new Set();
       // 速度修正：若最长路径（垂直+水平+拐弯停顿）超过 20s，统一降低所有标记速度
       let speed = SPEED;
       const stats = markers.map(m => {
@@ -452,14 +625,36 @@
         for (const mk of markers) {
           if (t >= mk.tl.end && !mk.flipped) {
             mk.flipped = true;
-            const res = Game.resolve(N, cfg.lines, mk.start);
+            const res = Game.resolve(N, cfg.levels || cfg.lines, mk.start);
             revealed[res] = true;
             if (onFlip) onFlip(mk.playerId, res, mk.isMe);
           }
           const p = posAt(mk.tl, t);
           drawn.push({ x: p.x, y: p.y, color: mk.color, isMe: mk.isMe });
         }
-        draw({ ...cfg, phase: 'reveal', markers: drawn, revealed });
+        // 车头灯前沿（所有标记最低处）：夜色雾区域用它（有雾时），雾幕 glitch 擦除也用它（始终有效——单轮无夜色雾但雾幕仍随列车擦除）
+        let front = 0;
+        for (const mk of markers) {
+          const p = posAt(mk.tl, t);
+          if (p.y > front) front = p.y;
+        }
+        const revealFogY = hasFog ? front : null;
+        // 暗轨触发：我的列车（individual=我的 marker；group=唯一 marker）刚驶入该暗轨层级（竖向→横向的瞬间）→ 显现 + 音效
+        let myY = 0;
+        for (const mk of markers) {
+          const p = posAt(mk.tl, t);
+          if (mk.isMe || markers.length === 1) myY = Math.max(myY, p.y);
+        }
+        for (const k of darkTriggers) {
+          if (!darkRevealed.has(k) && geom.yOfLevel(k) <= myY) {
+            darkRevealed.add(k);
+            if (onDarkTrigger) onDarkTrigger(k);
+          }
+        }
+        draw({
+          ...cfg, phase: 'reveal', markers: drawn, revealed, revealFogY, revealFogBottom,
+          revealFront: front, darkRevealed, meId: cfg.meId,
+        });
         if (t < DUR) revealRaf = requestAnimationFrame(step);
         else { revealActive = false; revealRaf = 0; resolve(revealed); }
       }
@@ -475,11 +670,28 @@
     revealRaf = 0;
   }
 
+  // 事故调查回放：把最终静态结果画到独立 canvas（临时切换画布，画完恢复）
+  function drawTo(canvas, cfg) {
+    if (!canvas) return;
+    const oldCv = cv;
+    const oldCtx = ctx;
+    const oldGeom = geom;
+    try {
+      setup(canvas);
+      draw(cfg);
+    } finally {
+      cv = oldCv;
+      ctx = oldCtx;
+      geom = oldGeom;
+    }
+  }
+
   Board.setup = setup;
   Board.resize = resize;
   Board.setBg = setBg;
   Board.computeGeometry = computeGeometry;
   Board.draw = draw;
+  Board.drawTo = drawTo;
   Board.hitTest = hitTest;
   Board.runReveal = runReveal;
   Board.cancelReveal = cancelReveal;

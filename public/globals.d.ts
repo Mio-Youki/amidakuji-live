@@ -33,6 +33,7 @@ interface AudioSysApi {
   cheer(): void;
   error(): void;
   startGame(): void;
+  revealDark(): void;
 }
 
 /** board.js 暴露的画板 API */
@@ -45,6 +46,7 @@ interface BoardApi {
   runReveal(cfg: any, onFlip?: (pid: string | null, resIdx: number, isMe: boolean) => void): Promise<any>;
   cancelReveal(): void;
   setBg(img: HTMLImageElement | null): void;
+  drawTo(canvas: HTMLCanvasElement, cfg: any): void;
 }
 
 /** pixelate.js 暴露的像素化背景 API */

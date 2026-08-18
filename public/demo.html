@@ -59,15 +59,15 @@ window.onerror = function (msg, src, line, col, err) {
     { playerId: 'b', name: '小美', color: '#4dc3ff', start: 2, isMe: false },
     { playerId: 'c', name: '大壮', color: '#7dff5f', start: 4, isMe: false },
   ];
-  let lines = [];
+  let levels = [];
+  const lineColors = { a: '#ff2e55', b: '#4dc3ff', c: '#7dff5f' };
 
-  // 模拟 3 位玩家轮流画线，线条带玩家颜色（P1/P2/P3 循环）
-  const lineColors = () => lines.map((_, i) => players[i % 3].color);
-  const lineAuto = () => lines.map(() => false);
+  // 模拟 3 位玩家轮流施工（层级槽模型），线条带玩家颜色（P1/P2/P3 循环）
+  const mkLevel = (pair, pid) => ({ pair, hidden: false, playerId: pid, auto: false });
 
-  function randLines() {
-    lines = [];
-    for (let l = 0; l < M; l++) lines.push(Math.floor(Math.random() * (N - 1)));
+  function randLevels() {
+    levels = [];
+    for (let l = 0; l < M; l++) levels.push(mkLevel(Math.floor(Math.random() * (N - 1)), players[l % 3].playerId));
   }
 
   function size() {
@@ -80,10 +80,10 @@ window.onerror = function (msg, src, line, col, err) {
 
   function drawStatic(revealedAll) {
     size();
-    // 默认用「画线阶段」渲染：能看到像素化消隐效果 + 玩家彩色线条
+    // 默认用「画线阶段」渲染：能看到夜色雾（旧层被覆盖，底部 5 槽可见）+ 玩家彩色线条
     Board.draw({
       phase: revealedAll ? 'done' : 'drawing',
-      N, M, lines, lineColors: lineColors(), lineAuto: lineAuto(), nextLevel: M, results,
+      N, M, levels, lineColors, nextLevel: M, nextSlot: M, roundMode: 'multi', results,
       myTurn: false, previewPair: null,
       revealed: revealedAll ? Object.fromEntries(results.map((_, i) => [i, true])) : {},
     });
@@ -95,7 +95,7 @@ window.onerror = function (msg, src, line, col, err) {
     document.getElementById('demo-banner').textContent = '揭晓中…';
     const markers = players.map(p => ({ playerId: p.playerId, start: p.start, color: p.color, isMe: p.isMe }));
     await Board.runReveal(
-      { phase: 'reveal', N, M, lines, lineColors: lineColors(), lineAuto: lineAuto(), results, markers },
+      { phase: 'reveal', N, M, levels, lineColors, roundMode: 'multi', results, markers },
       (pid, resIdx, isMe) => { if (isMe) AudioSys.fanfare(); else AudioSys.turn(); }
     );
     document.getElementById('demo-banner').textContent = '揭晓完毕！';
@@ -103,18 +103,18 @@ window.onerror = function (msg, src, line, col, err) {
     setTimeout(() => AudioSys.cheer(), 200);
   }
 
-  randLines();
+  randLevels();
   const params = new URLSearchParams(location.search);
-  const mode = params.get('mode'); // 'end' 揭晓完毕态 | 'flicker' 欺骗性闪烁预览
-  if (mode === 'flicker') {
-    lines = [0, 3, 1, 4, 2, 0, 3, 1, 4, 2]; // 固定线条，便于对比闪烁
+  const mode = params.get('mode'); // 'end' 揭晓完毕态 | 'fog' 夜色雾预览
+  if (mode === 'fog') {
+    levels = [0, 3, 1, 4, 2, 0, 3, 1, 4, 2].map((p, i) => mkLevel(p, players[i % 3].playerId)); // 固定线条，便于对比雾
     size();
     const banner = document.getElementById('demo-banner');
-    banner.textContent = '欺骗性闪烁预览：已画线条随机隐现';
+    banner.textContent = '夜色雾预览：旧层被从上至下覆盖，底部 5 槽可见';
     setInterval(() => {
       size();
       Board.draw({
-        phase: 'drawing', N, M, lines, lineColors: lineColors(), lineAuto: lineAuto(), nextLevel: M, results,
+        phase: 'drawing', N, M, levels, lineColors, nextLevel: M, nextSlot: M, roundMode: 'multi', results,
         myTurn: false, previewPair: null, revealed: {},
       });
     }, 180);
@@ -123,7 +123,7 @@ window.onerror = function (msg, src, line, col, err) {
     const g = Board.computeGeometry(N, M);
     const endMarkers = players.map(p => ({ x: g.xOf(p.start), y: g.bottomY + 8, color: p.color, isMe: p.isMe }));
     Board.draw({
-      phase: 'done', N, M, lines, lineColors: lineColors(), lineAuto: lineAuto(), nextLevel: M, results,
+      phase: 'done', N, M, levels, lineColors, nextLevel: M, roundMode: 'multi', results,
       myTurn: false, previewPair: null, markers: endMarkers,
       revealed: Object.fromEntries(results.map((_, i) => [i, true])),
     });
@@ -134,7 +134,7 @@ window.onerror = function (msg, src, line, col, err) {
   if (params.get('auto') === '1') setTimeout(run, 600);
 
   document.getElementById('btn-redraw').onclick = () => {
-    randLines();
+    randLevels();
     drawStatic(false);
     document.getElementById('demo-banner').textContent = '已重新画线，点「重新走线」揭晓';
     AudioSys.pen();

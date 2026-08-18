@@ -18,6 +18,11 @@
  */
 
 /**
+ * 层级槽（服务端按观看者过滤暗轨线：他人视角的暗轨呈现为 null）
+ * @typedef {null | {pair: number, hidden: boolean, playerId: string | null, auto: boolean}} LevelSlot
+ */
+
+/**
  * 房间状态快照（服务端 snapshot() 下发，state.js 存 S）
  * @typedef {Object} RoomState
  * @property {string} myId
@@ -25,9 +30,8 @@
  * @property {'lobby'|'drawing'|'picking'|'reveal'|'done'} phase
  * @property {number} N
  * @property {string[]} results
- * @property {number[]} lines
- * @property {Array<{playerId: string|null, auto: boolean}>} lineMeta
- * @property {number} nextLevel
+ * @property {LevelSlot[]} levels  固定层级槽（长度 = maxLines；null = 空白级/暗轨（他人视角）/未施工）
+ * @property {number} nextLevel    已行动槽数
  * @property {PlayerState[]} players
  * @property {number} turnIdx
  * @property {number} turnDeadline
@@ -37,8 +41,13 @@
  * @property {number} maxLines
  * @property {'individual'|'host'|'vote'} mode
  * @property {'multi'|'single'} roundMode
- * @property {number} quota
- * @property {number} turnLines
+ * @property {boolean} fog  夜色雾开关（房主大厅可切换；false 时多轮模式也无雾）
+ * @property {number[]} [fogLevels] 雾幕区层级（纠缠度超标生成的整行雾区；对他人隐藏该层画线）
+ * @property {number} [darkLeft]   本人剩余暗轨（暗手）配额
+ * @property {number} [skipLeft]   本人剩余工务组待命（Skip）配额
+ * @property {(string | null)[]} [slotOwner] 单轮模式槽归属（公开）
+ * @property {number} [nextSlot]   当前行动应填的层级（画线阶段）
+ * @property {number} [myRemaining] 单轮：本人剩余未施工槽数
  * @property {number} [myPick]
  * @property {string[]} [pickedBy]
  * @property {Record<number, string>} [pickedSlots]
@@ -58,10 +67,22 @@
  * @property {RoomState['phase']} phase
  * @property {number} N
  * @property {number} M
- * @property {number[]} lines
- * @property {string[]} [lineColors]
- * @property {boolean[]} [lineAuto]
+ * @property {LevelSlot[]} levels
+ * @property {Record<string, string>} [lineColors]
  * @property {number} nextLevel
+ * @property {number} [nextSlot]
+ * @property {'multi'|'single'} [roundMode]
+ * @property {(string | null)[]} [slotOwner]
+ * @property {string} [turnPlayerId]
+ * @property {string} [turnColor]
+ * @property {number} [revealFogY]
+ * @property {number} [revealFogBottom]
+ * @property {number[]} [fogLevels]
+ * @property {Set<number>} [darkRevealed]
+ * @property {string} [meId]
+ * @property {number} [traceStart]
+ * @property {string} [traceColor]
+ * @property {number} [lineShrink]
  * @property {string[]} results
  * @property {boolean} myTurn
  * @property {number|null} [previewPair]
@@ -96,11 +117,11 @@
  * @property {{mode: 'individual'|'host'|'vote'}} set_mode
  * @property {{roundMode: 'multi'|'single'}} set_round
  * @property {{maxLines: number}} set_maxlines
+ * @property {{fog: boolean}} set_fog
  * @property {{dataUrl: string | null}} set_bg
  * @property {{}} start_drawing
- * @property {{pair: number}} draw_line
+ * @property {{kind: 'open'|'dark'|'skip', pair?: number}} draw_line
  * @property {{}} end_drawing
- * @property {{}} end_turn
  * @property {{index: number}} pick_start
  * @property {{}} leave_room
  * @property {{}} restart

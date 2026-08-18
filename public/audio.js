@@ -85,6 +85,12 @@
     cheer() { [784, 988, 1175, 1568].forEach((f, i) => tone(f, 0.12, { vol: 0.10, when: i * 0.07 })); noise(0.3, 0.06, 0.1); },
     error() { tone(160, 0.15, { slide: -60, vol: 0.12, type: 'sawtooth' }); },
     startGame() { [262, 330, 392, 523].forEach((f, i) => tone(f, 0.14, { vol: 0.10, when: i * 0.1 })); },
+    // 揭晓时暗轨被列车触发：低音下滑（惊觉）+ 高音钉（揭示）+ 噪点（故障感）
+    revealDark() {
+      tone(200, 0.22, { slide: -110, vol: 0.16, type: 'sawtooth' });
+      tone(784, 0.14, { vol: 0.11, when: 0.03, type: 'triangle' });
+      noise(0.16, 0.06, 0.02);
+    },
   };
 
   root.AudioSys = A;

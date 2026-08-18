@@ -14,6 +14,15 @@ interface Player {
   seat: number;
   color: string;
   hosted?: boolean;
+  darkLeft: number; // 每局暗轨（暗手）配额
+  skipLeft: number; // 每局工务组待命（Skip）配额
+}
+
+interface LevelSlot {
+  pair: number;
+  hidden: boolean;
+  playerId: string | null;
+  auto: boolean;
 }
 
 interface Room {
@@ -24,12 +33,12 @@ interface Room {
   N: number;
   results: string[];
   maxLines: number;
-  quota: number;
-  turnLines: number;
-  playerLines: Record<string, number>;
-  lines: number[];
-  lineMeta: Array<{ playerId: string | null; auto: boolean }>;
-  nextLevel: number;
+  fog: boolean; // 夜色雾开关（房主大厅可切换）
+  levels: (LevelSlot | null)[]; // 固定层级槽（null = 空白级/未施工）
+  acted: Set<number>;           // 已行动（占槽）的层级索引
+  nextLevel: number;            // 已行动槽数
+  slotOwner: (string | null)[]; // 单轮模式槽归属（round-robin）；标准模式全 null
+  fogLevels: Set<number>;       // 雾幕区层级（纠缠度超标生成，按 canvas 相邻三行区域覆盖）
   players: Player[];
   turnIdx: number;
   turnDeadline: number | null;
@@ -45,6 +54,8 @@ interface Room {
   winnerResult: number | null;
   voteCounts: Record<number, number> | null;
   bg: string | null;
+  lastActivity: number;
+  allOfflineSince: number | null;
   hostVoteStart?: number | null;
   assignments?: Record<string, number>;
   revealDone?: { reported: Set<string>; startedAt: number };
@@ -57,8 +68,7 @@ interface RoomSnapshot {
   phase: Room['phase'];
   N: number;
   results: string[];
-  lines: number[];
-  lineMeta: Room['lineMeta'];
+  levels: (LevelSlot | null)[];
   nextLevel: number;
   players: Array<{
     id: string;
@@ -76,7 +86,6 @@ interface RoomSnapshot {
   maxLines: number;
   mode: Room['mode'];
   roundMode: Room['roundMode'];
-  quota: number;
-  turnLines: number;
+  fog: boolean;
   [key: string]: unknown;
 }

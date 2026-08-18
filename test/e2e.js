@@ -32,6 +32,13 @@ function emit(s, ev, data) {
 }
 
 const last = arr => arr[arr.length - 1];
+// 最后一个非空层级槽（服务端 levels 模型）
+const lastLine = room => {
+  for (let k = room.levels.length - 1; k >= 0; k--) if (room.levels[k]) return room.levels[k];
+  return null;
+};
+// 服务端视角的完整层级（含暗轨）
+const fullLevels = room => room.levels;
 
 (async () => {
   await new Promise(r => server.listen(0, r));
@@ -98,26 +105,28 @@ const last = arr => arr[arr.length - 1];
   assert.strictEqual(last(snaps.a).players[last(snaps.a).turnIdx].id, last(snaps.a).myId, 'a 客户端视角：轮到我自己');
   console.log('✓ 开始画线，轮到房主（客户端 myTurn 判定正确）');
 
-  // --- 轮流画线 7 笔 ---
+  // --- 轮流画线 7 笔（扳道岔=显手） ---
   const byId = { [aId]: a, [bId]: b, [cId]: c };
   const turnSeq = [];
   for (let l = 0; l < 7; l++) {
     const cur = room.players[room.turnIdx];
     turnSeq.push(cur.name);
-    r = await emit(byId[cur.id], 'draw_line', { pair: l % (room.N - 1) });
+    r = await emit(byId[cur.id], 'draw_line', { kind: 'open', pair: l % (room.N - 1) });
     assert.strictEqual(r.error, undefined, 'draw_line 应成功');
-    assert.strictEqual(room.lines.length, l + 1);
+    assert.strictEqual(room.nextLevel, l + 1);
   }
   console.log('✓ 轮流画线 7 笔，顺序:', turnSeq.join(' → '));
   assert.strictEqual(room.phase, 'drawing', '7 笔未到上限应仍在画线阶段');
-  // lineMeta 与线条同步，记录绘制者
-  assert.strictEqual(room.lineMeta.length, 7, 'lineMeta 与线条同步');
-  room.lineMeta.forEach((m, i) => {
-    assert.ok(m.playerId, '每根线记录绘制者');
-    assert.strictEqual(m.auto, false, '手动绘制');
+  // 层级槽与行动同步，记录施工者
+  assert.strictEqual(room.nextLevel, 7, '7 槽已行动');
+  const metas = room.levels.filter(Boolean);
+  assert.strictEqual(metas.length, 7, '7 条实线（无 Skip）');
+  metas.forEach((m, i) => {
+    assert.ok(m.playerId, '每槽记录施工者');
+    assert.strictEqual(m.auto, false, '手动施工');
   });
-  assert.strictEqual(room.lineMeta[0].playerId, aId, '第一笔为房主所画');
-  console.log('✓ 每根线记录绘制者（玩家颜色）');
+  assert.strictEqual(room.levels[0].playerId, aId, '第一槽为房主所施工');
+  console.log('✓ 每槽记录施工者（玩家颜色）');
 
   // --- 房主决定结束 ---
   r = await emit(a, 'end_drawing', {});
@@ -146,7 +155,7 @@ const last = arr => arr[arr.length - 1];
   console.log('✓ 选点完成 → 揭晓，picks =', JSON.stringify(room.picks));
 
   // --- 置换校验 ---
-  const m = Game.mapping(room.N, room.lines);
+  const m = Game.mapping(room.N, room.levels);
   assert.strictEqual(new Set(m).size, room.N, '映射应为双射');
   const assigned = Object.values(room.assignments);
   assert.strictEqual(new Set(assigned).size, 3, '3 人结果互不相同');
@@ -180,20 +189,20 @@ const last = arr => arr[arr.length - 1];
   r = await emit(a, 'restart', {});
   assert.strictEqual(r.error, undefined);
   assert.strictEqual(room.phase, 'drawing');
-  assert.strictEqual(room.lines.length, 0);
+  assert.strictEqual(room.nextLevel, 0);
   console.log('✓ 再来一局 OK');
 
   // 非当前玩家画线拒绝
-  r = await emit(b, 'draw_line', { pair: 0 });
+  r = await emit(b, 'draw_line', { kind: 'open', pair: 0 });
   assert.ok(r.error, '非当前玩家应被拒绝');
   console.log('✓ 越权画线被拒绝:', r.error);
 
-  // 超时自动落笔
-  const before = room.lines.length;
+  // 超时自动占槽（自动扳道岔=显手，随机位置）
+  const before = room.nextLevel;
   await wait(1800);
-  assert.strictEqual(room.lines.length, before + 1, '超时后应自动落一笔');
-  assert.strictEqual(room.lineMeta[room.lineMeta.length - 1].auto, true, '自动笔标记 auto');
-  console.log('✓ 超时自动落笔 OK');
+  assert.strictEqual(room.nextLevel, before + 1, '超时后应自动占一槽');
+  assert.strictEqual(lastLine(room).auto, true, '自动施工标记 auto');
+  console.log('✓ 超时自动占槽 OK');
 
   a.close(); b.close(); c.close();
   rooms.delete(room.code);
@@ -217,9 +226,9 @@ const last = arr => arr[arr.length - 1];
     assert.strictEqual(roomS.players[roomS.turnIdx].id, dId, '单人时轮到房主自己');
     console.log('✓ 单人开局 OK');
 
-    // 画满上限自动截止（N=2 → 20 笔，pair 恒为 0）
+    // 画满上限自动截止（N=2 → 20 槽，pair 恒为 0）
     for (let l = 0; l < 20; l++) {
-      r = await emit(d, 'draw_line', { pair: 0 });
+      r = await emit(d, 'draw_line', { kind: 'open', pair: 0 });
       assert.strictEqual(r.error, undefined);
     }
     assert.strictEqual(roomS.phase, 'picking', '画满 maxLines 自动进入选点');
@@ -230,7 +239,7 @@ const last = arr => arr[arr.length - 1];
     assert.strictEqual(roomS.phase, 'reveal', '单人锁定后立即揭晓');
     await wait(60);
     assert.strictEqual(last(snapD).myPick, 1, '单人 myPick 正确');
-    assert.strictEqual(last(snapD).myResult, Game.resolve(2, roomS.lines, 1), '单人 myResult 正确');
+    assert.strictEqual(last(snapD).myResult, Game.resolve(2, roomS.levels, 1), '单人 myResult 正确');
     await wait(1600);
     assert.strictEqual(roomS.phase, 'done');
     assert.strictEqual(Object.keys(roomS.assignments).length, 1, '单人分配 1 个结果');
@@ -260,7 +269,7 @@ const last = arr => arr[arr.length - 1];
     for (let l = 0; l < 3; l++) {
       const cur = roomO.players[roomO.turnIdx];
       const sock = clients[[clients[0], clients[1], clients[2], clients[3]].findIndex(cl => cl.id === cur.socketId)];
-      r = await emit(sock, 'draw_line', { pair: l % 2 });
+      r = await emit(sock, 'draw_line', { kind: 'open', pair: l % 2 });
       assert.strictEqual(r.error, undefined);
     }
     r = await emit(clients[0], 'end_drawing', {});
@@ -312,7 +321,7 @@ const last = arr => arr[arr.length - 1];
     for (let l = 0; l < 3; l++) {
       const cur = roomV.players[roomV.turnIdx];
       const sock = clients[clients.findIndex(cl => cl.id === cur.socketId)];
-      await emit(sock, 'draw_line', { pair: l % 2 });
+      await emit(sock, 'draw_line', { kind: 'open', pair: l % 2 });
     }
     await emit(clients[0], 'end_drawing', {});
     // 透明化：第一票后 voteSlots 可见（投票者色块数据），互斥占用不暴露；票数未归票前不可见
@@ -336,10 +345,10 @@ const last = arr => arr[arr.length - 1];
     await wait(800); // VOTE_REVEAL_MS=600 + 缓冲
     assert.strictEqual(roomV.phase, 'reveal', '归票动画后进入揭晓');
     await wait(60);
-    assert.strictEqual(last(snapV).myResult, Game.resolve(3, roomV.lines, 0), '全员共享胜出起点的结果');
+    assert.strictEqual(last(snapV).myResult, Game.resolve(3, roomV.levels, 0), '全员共享胜出起点的结果');
     await wait(1600);
     assert.strictEqual(roomV.phase, 'done');
-    assert.strictEqual(roomV.winnerResult, Game.resolve(3, roomV.lines, 0));
+    assert.strictEqual(roomV.winnerResult, Game.resolve(3, roomV.levels, 0));
     console.log('✓ 投票模式：透明化 + 房主票 1.5 打破平票');
     clients.forEach(cl => cl.close());
     rooms.delete(roomV.code);
@@ -358,7 +367,7 @@ const last = arr => arr[arr.length - 1];
     for (let l = 0; l < 3; l++) {
       const cur = roomH.players[roomH.turnIdx];
       const sock = clients[clients.findIndex(cl => cl.id === cur.socketId)];
-      await emit(sock, 'draw_line', { pair: l % 2 });
+      await emit(sock, 'draw_line', { kind: 'open', pair: l % 2 });
     }
     await emit(clients[0], 'end_drawing', {});
     // 非房主选点应拒绝
@@ -371,7 +380,7 @@ const last = arr => arr[arr.length - 1];
     assert.strictEqual(roomH.winnerStart, 2);
     await wait(1600);
     assert.strictEqual(roomH.phase, 'done');
-    assert.strictEqual(roomH.winnerResult, Game.resolve(3, roomH.lines, 2));
+    assert.strictEqual(roomH.winnerResult, Game.resolve(3, roomH.levels, 2));
     console.log('✓ 房主模式：房主选点 → 全员共享一个结果');
     clients.forEach(cl => cl.close());
     rooms.delete(roomH.code);
@@ -389,7 +398,7 @@ const last = arr => arr[arr.length - 1];
     for (let l = 0; l < 2; l++) {
       const cur = roomT.players[roomT.turnIdx];
       const sock = clients[clients.findIndex(cl => cl.id === cur.socketId)];
-      await emit(sock, 'draw_line', { pair: 0 });
+      await emit(sock, 'draw_line', { kind: 'open', pair: 0 });
     }
     await emit(clients[0], 'end_drawing', {});
     // 只有 T1 锁定，T2 挂机 → PICK_MS(800ms) 超时自动补选并揭晓
@@ -480,20 +489,20 @@ const last = arr => arr[arr.length - 1];
     assert.strictEqual(p3.online, true, '托管仍参与轮次');
     audioL.close();
 
-    // 房主 L1 退出（当前轮到他）→ 自动落一笔（托管）→ 房主移交给 L2（真人）
+    // 房主 L1 退出（当前轮到他）→ 自动占一槽（托管）→ 房主移交给 L2（真人）
     r = await emit(clients[0], 'leave_room', {});
     assert.strictEqual(r.error, undefined);
     assert.strictEqual(roomL.hostId, l2, '房主移交给真人 L2');
-    assert.strictEqual(roomL.lines.length, 1, '轮到退出的房主时自动落笔');
+    assert.strictEqual(roomL.nextLevel, 1, '轮到退出的房主时自动占槽');
 
-    // L2 画 1 笔 → 轮到托管 P3 → 短暂展示后自动随机落笔
-    r = await emit(clients[1], 'draw_line', { pair: 0 });
+    // L2 画 1 笔 → 轮到托管 P3 → 短暂展示后自动随机占槽
+    r = await emit(clients[1], 'draw_line', { kind: 'open', pair: 0 });
     assert.strictEqual(r.error, undefined);
-    assert.strictEqual(roomL.lines.length, 2);
-    const beforeL = roomL.lines.length;
+    assert.strictEqual(roomL.nextLevel, 2);
+    const beforeL = roomL.nextLevel;
     await wait(1800); // HOSTED_TURN_MS=1200 + 缓冲
-    assert.strictEqual(roomL.lines.length, beforeL + 1, '托管玩家自动随机落笔');
-    assert.strictEqual(roomL.lineMeta[roomL.lineMeta.length - 1].auto, true, '托管笔标记 auto');
+    assert.strictEqual(roomL.nextLevel, beforeL + 1, '托管玩家自动随机占槽');
+    assert.strictEqual(lastLine(roomL).auto, true, '托管施工标记 auto');
 
     // 单人退出 → 销毁房间
     const solo = await connect(port);
@@ -511,7 +520,7 @@ const last = arr => arr[arr.length - 1];
     rooms.delete(roomL.code);
   }
 
-  /* ============ 场景九：单轮模式（每人配额 + 回合内连续画 + 结束本回合） ============ */
+  /* ============ 场景九：单轮模式（交错槽归属 + 一次交接填完 + 暗轨/待命配额 + 超时自动占槽） ============ */
   {
     const clients = await Promise.all([connect(port), connect(port), connect(port)]);
     r = await emit(clients[0], 'create_room', { name: 'R1', results: ['甲', '乙', '丙'] });
@@ -529,30 +538,58 @@ const last = arr => arr[arr.length - 1];
     assert.strictEqual(roomR.roundMode, 'single');
     r = await emit(clients[0], 'start_drawing', {});
     assert.strictEqual(r.error, undefined);
-    // 配额 = ⌊maxLines(20)/3⌋ = 6
-    assert.strictEqual(roomR.quota, 6, '配额 = ⌊maxLines/玩家数⌋');
-    // 房主连续画 6 笔（回合不推进，直到画满配额）
+    // 槽归属 round-robin 预分配（数学顺序保持交错）
+    assert.strictEqual(roomR.slotOwner[0], r1, '槽0 属 R1');
+    assert.strictEqual(roomR.slotOwner[1], r2, '槽1 属 R2');
+    assert.strictEqual(roomR.slotOwner[2], r3, '槽2 属 R3');
+    assert.strictEqual(roomR.slotOwner[3], r1, '槽3 回到 R1（交错）');
+    assert.strictEqual(roomR.players[roomR.turnIdx].id, r1, '先轮到 R1');
+    // R1 的槽：0,3,6,9,12,15,18（7 槽）
+    r = await emit(clients[0], 'draw_line', { kind: 'dark', pair: 0 }); // 暗轨：槽0
+    assert.strictEqual(r.error, undefined);
+    assert.strictEqual(roomR.levels[0].hidden, true, '暗轨线隐藏标记');
+    assert.strictEqual(roomR.players.find(p => p.id === r1).darkLeft, 0, '暗轨配额用完');
+    r = await emit(clients[0], 'draw_line', { kind: 'dark', pair: 1 }); // 第二次暗轨被拒
+    assert.ok(r.error, '暗轨配额已尽应被拒绝');
+    r = await emit(clients[0], 'draw_line', { kind: 'open', pair: 1 }); // 槽3
+    assert.strictEqual(r.error, undefined);
+    assert.strictEqual(roomR.players[roomR.turnIdx].id, r1, 'R1 未填完仍是他回合');
+    assert.strictEqual(roomR.levels[3].pair, 1, '槽3 落线（跳过空槽 1,2）');
+    r = await emit(clients[0], 'draw_line', { kind: 'open', pair: 0 }); // 槽6
+    r = await emit(clients[0], 'draw_line', { kind: 'open', pair: 1 }); // 槽9
+    r = await emit(clients[0], 'draw_line', { kind: 'skip' });         // 槽12 待命
+    assert.strictEqual(r.error, undefined);
+    assert.strictEqual(roomR.levels[12], null, '待命槽无线');
+    assert.strictEqual(roomR.nextLevel, 5, '5 槽已行动（含待命）');
+    assert.strictEqual(roomR.players.find(p => p.id === r1).skipLeft, 0, '待命配额用完');
+    r = await emit(clients[0], 'draw_line', { kind: 'skip' }); // 第二次待命被拒
+    assert.ok(r.error, '待命配额已尽应被拒绝');
+    r = await emit(clients[0], 'draw_line', { kind: 'open', pair: 0 }); // 槽15
+    r = await emit(clients[0], 'draw_line', { kind: 'open', pair: 1 }); // 槽18
+    assert.strictEqual(roomR.players[roomR.turnIdx].id, r2, 'R1 填完 7 槽后轮到 R2');
+    assert.strictEqual(roomR.nextLevel, 7);
+    // 非当前玩家越权（轮到 R2，R1 不能动）
+    r = await emit(clients[0], 'draw_line', { kind: 'open', pair: 0 });
+    assert.ok(r.error, '非当前玩家越权被拒');
+    // R2 填 6 槽（1,4,7,10,13,16），最后一槽（19）等待超时自动占槽
     for (let l = 0; l < 6; l++) {
-      assert.strictEqual(roomR.players[roomR.turnIdx].id, r1, '第 ' + l + ' 笔仍是房主回合');
-      r = await emit(clients[0], 'draw_line', { pair: l % 2 });
+      assert.strictEqual(roomR.players[roomR.turnIdx].id, r2, '第 ' + l + ' 槽仍是 R2 回合');
+      r = await emit(clients[1], 'draw_line', { kind: 'open', pair: l % 2 });
       assert.strictEqual(r.error, undefined);
     }
-    assert.strictEqual(roomR.players[roomR.turnIdx].id, r2, '画满配额后轮到 R2');
-    // 配额已尽不能再画
-    r = await emit(clients[0], 'draw_line', { pair: 0 });
-    assert.ok(r.error, '配额已尽不能再画');
-    // R2 画 2 笔后主动结束本回合
-    await emit(clients[1], 'draw_line', { pair: 0 });
-    await emit(clients[1], 'draw_line', { pair: 1 });
-    assert.strictEqual(roomR.players[roomR.turnIdx].id, r2, '未达配额仍是 R2 回合');
-    r = await emit(clients[1], 'end_turn', {});
-    assert.strictEqual(r.error, undefined);
-    assert.strictEqual(roomR.players[roomR.turnIdx].id, r3, '结束本回合后轮到 R3');
-    // 房主结束画线
-    r = await emit(clients[0], 'end_drawing', {});
-    assert.strictEqual(r.error, undefined);
-    assert.strictEqual(roomR.phase, 'picking');
-    console.log('✓ 单轮模式：配额画线、回合内连续、结束本回合');
+    const beforeR = roomR.nextLevel; // = 14
+    await wait(1800); // TURN_MS=1500 + 缓冲 → 槽19 自动占槽
+    assert.strictEqual(roomR.nextLevel, beforeR + 1, '单轮超时自动占槽');
+    assert.strictEqual(lastLine(roomR).auto, true, '超时施工标记 auto');
+    assert.strictEqual(roomR.players[roomR.turnIdx].id, r3, 'R2 填完后轮到 R3');
+    // R3 填完 6 槽（2,5,8,11,14,17）→ 全部 20 槽行动 → 选点
+    for (let l = 0; l < 6; l++) {
+      r = await emit(clients[2], 'draw_line', { kind: 'open', pair: l % 2 });
+      assert.strictEqual(r.error, undefined);
+    }
+    assert.strictEqual(roomR.nextLevel, 20, '20 槽全部行动');
+    assert.strictEqual(roomR.phase, 'picking', '全部填完自动进入选点');
+    console.log('✓ 单轮模式：交错槽归属、一次交接填完、暗轨/待命配额、超时自动占槽');
     clients.forEach(c => c.close());
     rooms.delete(roomR.code);
   }
@@ -656,6 +693,232 @@ const last = arr => arr[arr.length - 1];
     console.log('✓ 僵尸房回收：全员掉线/托管（自动推进不干扰墙钟计时；已退出者不通知）');
     clients.forEach(c => c.close());
     delete process.env.ZOMBIE_GRACE_MS;
+  }
+
+  /* ============ 场景十三：暗轨（暗手）隐私与揭晓全显 ============ */
+  {
+    const clients = await Promise.all([connect(port), connect(port)]);
+    const snapP1 = [];
+    const snapP2 = [];
+    clients[0].on('state', s => snapP1.push(s));
+    clients[1].on('state', s => snapP2.push(s));
+    r = await emit(clients[0], 'create_room', { name: 'K1', results: ['甲', '乙', '丙'] });
+    assert.strictEqual(r.error, undefined);
+    const roomK = [...rooms.values()][0];
+    const codeK = roomK.code;
+    const k1 = r.playerId;
+    const k2 = (await emit(clients[1], 'join_room', { code: codeK, name: 'K2' })).playerId;
+    await emit(clients[0], 'start_drawing', {});
+    // 标准模式一人一笔轮流：K1 槽0 扳道岔(pair0) → K2 槽1 暗轨(pair1) → K1 槽2 扳道岔(pair0)
+    // 纠缠度：1 + 1.5 + 1 = 3.5 < 4 → 不触发雾幕（保持场景只测暗轨）
+    r = await emit(clients[0], 'draw_line', { kind: 'open', pair: 0 });
+    assert.strictEqual(r.error, undefined);
+    r = await emit(clients[1], 'draw_line', { kind: 'dark', pair: 1 });
+    assert.strictEqual(r.error, undefined);
+    r = await emit(clients[0], 'draw_line', { kind: 'open', pair: 0 });
+    assert.strictEqual(r.error, undefined);
+    await wait(60);
+    assert.strictEqual(roomK.fogLevels.size, 0, '该线序不触发雾幕');
+    // 本人（K2）视角：看到自己的暗轨线 + 配额扣减
+    assert.strictEqual(last(snapP2).levels[1].hidden, true, '本人视角可见暗轨线');
+    assert.strictEqual(last(snapP2).darkLeft, 0, '本人暗轨配额扣减');
+    // 他人视角：暗轨呈现为空槽（与待命一致）
+    assert.strictEqual(last(snapP1).levels[0].pair, 0, '他人可见显手线');
+    assert.strictEqual(last(snapP1).levels[1], null, '他人视角暗轨为空槽');
+    assert.strictEqual(last(snapP1).darkLeft, 1, '他人配额不受影响');
+    // 暗轨真实参与置换：完整 levels 的映射 ≠ 他人视角（缺暗轨）的映射
+    // 完整 [{0},{1},{0}] → [2,1,0]；K1 视角 [{0},null,{0}] → 起点0 → 0
+    const mFull = Game.mapping(3, roomK.levels);
+    const mP1 = Game.mapping(3, last(snapP1).levels);
+    assert.strictEqual(mFull[0], 2, '完整映射：起点0 → 槽0(0↔1) 槽1(1↔2) 槽2(0↔1) → 2');
+    assert.strictEqual(mP1[0], 0, '他人视角（缺暗轨）：起点0 → 0（推演错误即信息缺口）');
+    // 结束 → 选点 → 揭晓：暗轨在揭晓阶段全显（含他人视角）
+    await emit(clients[0], 'end_drawing', {});
+    await emit(clients[0], 'pick_start', { index: 0 });
+    await emit(clients[1], 'pick_start', { index: 2 });
+    await wait(60);
+    assert.strictEqual(roomK.phase, 'reveal');
+    assert.strictEqual(last(snapP1).levels[1].hidden, true, '揭晓阶段暗轨对他人全显');
+    assert.strictEqual(last(snapP1).levels[1].playerId, k2, '揭晓阶段可见暗轨归属');
+    // 最终结果按完整置换计算（含暗轨）
+    await wait(60);
+    assert.strictEqual(last(snapP2).myResult, mFull[2], '结果按含暗轨的完整置换计算');
+    await wait(1600);
+    assert.strictEqual(roomK.phase, 'done');
+    console.log('✓ 暗轨：本人可见/他人空槽、揭晓全显点名、真实参与置换');
+    clients.forEach(c => c.close());
+    rooms.delete(roomK.code);
+  }
+
+  /* ============ 场景十四：夜色雾开关（仅房主、仅开局前） ============ */
+  {
+    const clients = await Promise.all([connect(port), connect(port)]);
+    r = await emit(clients[0], 'create_room', { name: 'F1', results: ['甲', '乙'] });
+    assert.strictEqual(r.error, undefined);
+    const roomF = [...rooms.values()][0];
+    const codeF = roomF.code;
+    await emit(clients[1], 'join_room', { code: codeF, name: 'F2' });
+    assert.strictEqual(roomF.fog, true, '默认迷雾开启');
+    r = await emit(clients[1], 'set_fog', { fog: false });
+    assert.ok(r.error, '非房主设置迷雾被拒');
+    r = await emit(clients[0], 'set_fog', { fog: 'yes' });
+    assert.ok(r.error, '非法值被拒');
+    r = await emit(clients[0], 'set_fog', { fog: false });
+    assert.strictEqual(r.error, undefined);
+    assert.strictEqual(roomF.fog, false, '房主可关闭迷雾');
+    // 开局后不可修改
+    await emit(clients[0], 'start_drawing', {});
+    r = await emit(clients[0], 'set_fog', { fog: true });
+    assert.ok(r.error, '开局后不可修改迷雾');
+    // 迷雾设置随快照下发
+    await wait(60);
+    console.log('✓ 夜色雾开关：默认开启、仅房主、仅开局前');
+    clients.forEach(c => c.close());
+    rooms.delete(roomF.code);
+  }
+
+  /* ============ 场景十五：雾幕纠缠度（触发/不触发/重复加成/多雾区/隐私/揭晓全显） ============ */
+  {
+    const clients = await Promise.all([connect(port), connect(port)]);
+    const snapP1 = [];
+    const snapP2 = [];
+    clients[0].on('state', s => snapP1.push(s));
+    clients[1].on('state', s => snapP2.push(s));
+    r = await emit(clients[0], 'create_room', { name: 'M1', results: ['甲', '乙', '丙'] });
+    assert.strictEqual(r.error, undefined);
+    const roomM = [...rooms.values()][0];
+    const codeM = roomM.code;
+    const m2 = (await emit(clients[1], 'join_room', { code: codeM, name: 'M2' })).playerId;
+    await emit(clients[0], 'start_drawing', {});
+    // 部分A：重复显手触发（显1 + 重复显1.5 + 重复显1.5 = 4）
+    await emit(clients[0], 'draw_line', { kind: 'open', pair: 0 }); // s0: 1
+    await emit(clients[1], 'draw_line', { kind: 'open', pair: 0 }); // s1: 1+0.5=1.5（与 s0 同轨）
+    r = await emit(clients[0], 'draw_line', { kind: 'open', pair: 0 }); // s2: 1.5
+    assert.strictEqual(r.error, undefined);
+    assert.ok(roomM.fogLevels.has(0) && roomM.fogLevels.has(1) && roomM.fogLevels.has(2), '三条同轨显手触发雾区 {0,1,2}');
+    // 部分B：新三线（s1,s2,s3）再次触发 → 多雾区并存
+    await emit(clients[1], 'draw_line', { kind: 'open', pair: 1 }); // s3: 1（换轨）
+    assert.strictEqual(roomM.fogLevels.has(3), true, '第二组三线触发，雾区扩展 {0,1,2,3}');
+    // 部分C：skip 不触发（s2 1.5 + s3 1 + s4 0 = 2.5）
+    await emit(clients[0], 'draw_line', { kind: 'skip' });          // s4: 0
+    assert.strictEqual(roomM.fogLevels.size, 4, 'skip 后不触发新雾区');
+    await wait(60);
+    // 隐私：雾区层级对他人不可读（呈空槽），本人自己的线可见（双向视角）
+    assert.strictEqual(last(snapP2).levels[0], null, 'P2 视角：雾区层 s0（K1 的线）为空槽');
+    assert.strictEqual(last(snapP1).levels[1], null, 'P1 视角：雾区层 s1（K2 的线）为空槽');
+    assert.strictEqual(last(snapP2).levels[2], null, 'P2 视角：雾区层 s2（K1 的线）为空槽');
+    assert.strictEqual(last(snapP1).levels[3], null, 'P1 视角：雾区层 s3（K2 的线）为空槽');
+    assert.strictEqual(last(snapP2).levels[1].pair, 0, 'P2 视角：自己画在雾区的线仍可见');
+    assert.strictEqual(last(snapP1).levels[0].pair, 0, 'P1 视角：自己画在雾区的线仍可见');
+    assert.strictEqual(last(snapP2).levels[3].pair, 1, 'P2 视角：雾区层 s3 自己的线可见');
+    assert.strictEqual(last(snapP2).levels[4], null, 'skip 层无线');
+    assert.ok(Array.isArray(last(snapP1).fogLevels) && last(snapP1).fogLevels.length === 4, 'fogLevels 公开下发');
+    // 揭晓：雾区全显
+    await emit(clients[0], 'end_drawing', {});
+    await emit(clients[0], 'pick_start', { index: 0 });
+    await emit(clients[1], 'pick_start', { index: 2 });
+    await wait(60);
+    assert.strictEqual(roomM.phase, 'reveal');
+    assert.strictEqual(last(snapP2).levels[0].pair, 0, '揭晓阶段雾区线对他人全显');
+    assert.strictEqual(last(snapP2).levels[1].playerId, m2, '揭晓阶段可见雾区线归属（K2 的线）');
+    await wait(1600);
+    assert.strictEqual(roomM.phase, 'done');
+    clients.forEach(c => c.close());
+    rooms.delete(roomM.code);
+
+    // 部分D：暗手贡献 + 重复暗手（暗1.5 + 重复暗2 + 显1 = 4.5）触发
+    const clients2 = await Promise.all([connect(port), connect(port)]);
+    r = await emit(clients2[0], 'create_room', { name: 'M2', results: ['甲', '乙', '丙'] });
+    assert.strictEqual(r.error, undefined);
+    const roomD = [...rooms.values()][0];
+    const codeD = roomD.code;
+    await emit(clients2[1], 'join_room', { code: codeD, name: 'M2B' });
+    await emit(clients2[0], 'start_drawing', {});
+    await emit(clients2[0], 'draw_line', { kind: 'dark', pair: 0 });  // s0: 暗 1.5
+    await emit(clients2[1], 'draw_line', { kind: 'dark', pair: 0 });  // s1: 暗 1.5+0.5=2（重复暗手）
+    r = await emit(clients2[0], 'draw_line', { kind: 'open', pair: 1 }); // s2: 显 1（换轨）
+    assert.strictEqual(r.error, undefined);
+    assert.ok(roomD.fogLevels.has(0) && roomD.fogLevels.has(1) && roomD.fogLevels.has(2), '暗手+重复暗手触发雾区');
+    console.log('✓ 雾幕：纠缠度触发（重复显/暗手+重复）、多雾区并存、快照隐私、揭晓全显');
+    clients2.forEach(c => c.close());
+    rooms.delete(roomD.code);
+  }
+
+  /* ============ 场景十六：纠缠度按 canvas 相邻三行区域判定 ============ */
+  {
+    // 部分 A：多轮——连续三行同轨道 → 区域整体覆盖并随新线扩展
+    const clients = await Promise.all([connect(port), connect(port)]);
+    r = await emit(clients[0], 'create_room', { name: 'E1', results: ['甲', '乙', '丙'] });
+    assert.strictEqual(r.error, undefined);
+    const roomE = [...rooms.values()][0];
+    const codeE = roomE.code;
+    await emit(clients[1], 'join_room', { code: codeE, name: 'E2' });
+    await emit(clients[0], 'start_drawing', {});
+    await emit(clients[0], 'draw_line', { kind: 'open', pair: 0 }); // 槽0
+    await emit(clients[1], 'draw_line', { kind: 'open', pair: 0 }); // 槽1
+    r = await emit(clients[0], 'draw_line', { kind: 'open', pair: 0 }); // 槽2 → 区域[0,1,2]=1+1.5+1.5=4
+    assert.strictEqual(r.error, undefined);
+    assert.strictEqual(roomE.fogLevels.size, 3, '区域 [0,1,2] 三行全部覆盖');
+    assert.ok(roomE.fogLevels.has(0) && roomE.fogLevels.has(1) && roomE.fogLevels.has(2), '雾幕为连续区域，非离散单行');
+    r = await emit(clients[1], 'draw_line', { kind: 'open', pair: 1 }); // 槽3 → 区域[1,2,3]=1.5+1.5+1=4
+    assert.strictEqual(r.error, undefined);
+    assert.strictEqual(roomE.fogLevels.size, 4, '新线触发区域 [1,2,3]，雾幕扩展为 {0,1,2,3}');
+    assert.ok(roomE.fogLevels.has(3), '槽3 加入雾幕');
+    clients.forEach(c => c.close());
+    rooms.delete(roomE.code);
+
+    // 部分 B：单轮——第一位玩家离散铺轨永不触发；B 顶部绘制不影响 A 底部（无跨界雾幕）
+    const clients2 = await Promise.all([connect(port), connect(port), connect(port)]);
+    r = await emit(clients2[0], 'create_room', { name: 'E2', results: ['甲', '乙', '丙'] });
+    assert.strictEqual(r.error, undefined);
+    const roomS = [...rooms.values()][0];
+    const codeS = roomS.code;
+    await emit(clients2[1], 'join_room', { code: codeS, name: 'E2B' });
+    await emit(clients2[2], 'join_room', { code: codeS, name: 'E2C' });
+    await emit(clients2[0], 'set_round', { roundMode: 'single' });
+    await emit(clients2[0], 'start_drawing', {});
+    // A（槽 0,3,6,9,12,15,18）离散铺轨：每个区域皆空 → 永不触发
+    for (let i = 0; i < 7; i++) {
+      r = await emit(clients2[0], 'draw_line', { kind: 'open', pair: 0 });
+      assert.strictEqual(r.error, undefined);
+    }
+    assert.strictEqual(roomS.fogLevels.size, 0, '第一位玩家离散铺轨永不触发');
+    // B 画槽1（与 A 槽0 相邻同 pair）：区域[0,1]=1+1.5=2.5 → 不触发，且绝不波及 A 的底部槽
+    r = await emit(clients2[1], 'draw_line', { kind: 'open', pair: 0 });
+    assert.strictEqual(r.error, undefined);
+    assert.strictEqual(roomS.fogLevels.size, 0, 'B 一条重复尚不足触发');
+    assert.ok(!roomS.fogLevels.has(15) && !roomS.fogLevels.has(18), 'B 顶部绘制不会给 A 底部槽加雾幕（无跨界）');
+    // B 画槽4（区域[2,3,4]：空+A显+B重复=2.5）→ 仍不触发（区域判定，非时间序窗口）
+    r = await emit(clients2[1], 'draw_line', { kind: 'open', pair: 0 });
+    assert.strictEqual(r.error, undefined);
+    assert.strictEqual(roomS.fogLevels.size, 0, 'B 离散重复不触发（区域只有两条线）');
+    console.log('✓ 纠缠度区域判定：多轮连续触发+扩展、单轮离散不触发、无跨界雾幕');
+    clients2.forEach(c => c.close());
+    rooms.delete(roomS.code);
+
+    // 部分 C：2 人单轮——区域中间行最后落定也应触发（先后顺序不影响雾幕生成）
+    const clients3 = await Promise.all([connect(port), connect(port)]);
+    r = await emit(clients3[0], 'create_room', { name: 'E3', results: ['甲', '乙', '丙'] });
+    assert.strictEqual(r.error, undefined);
+    const roomT = [...rooms.values()][0];
+    const codeT = roomT.code;
+    await emit(clients3[1], 'join_room', { code: codeT, name: 'E3B' });
+    await emit(clients3[0], 'set_round', { roundMode: 'single' });
+    await emit(clients3[0], 'start_drawing', {});
+    // A 槽 0,2,4,...,18（偶数）先填满：0/2/8/10/16/18 用 p0，其余 p1 —— 区域均不达标
+    const aPairs2 = [0, 0, 1, 1, 0, 0, 1, 1, 0, 0];
+    for (let i = 0; i < aPairs2.length; i++) {
+      r = await emit(clients3[0], 'draw_line', { kind: 'open', pair: aPairs2[i] });
+      assert.strictEqual(r.error, undefined);
+    }
+    assert.strictEqual(roomT.fogLevels.size, 0, 'A 填满后无任何区域达标');
+    // B 画槽1(p0)：区域 [0,1,2] 三行已定型（A0、B1、A2）→ 1+1.5+1.5=4 → 触发（中间行最后落定也不遗漏）
+    r = await emit(clients3[1], 'draw_line', { kind: 'open', pair: 0 });
+    assert.strictEqual(r.error, undefined);
+    assert.ok(roomT.fogLevels.has(0) && roomT.fogLevels.has(1) && roomT.fogLevels.has(2), '区域 [0,1,2] 触发——先后顺序不影响判定');
+    console.log('✓ 纠缠度顺序无关：区域中间行最后落定同样触发');
+    clients3.forEach(c => c.close());
+    rooms.delete(roomT.code);
   }
 
   await new Promise(r2 => server.close(r2));

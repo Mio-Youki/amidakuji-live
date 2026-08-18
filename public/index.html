@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="format-detection" content="telephone=no">
-<title>像素抽签 · Amidakuji</title>
+<title>无人负责 · 夜行列车</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230b1026'/%3E%3Crect x='2' y='2' width='3' height='12' fill='%23e8ecff'/%3E%3Crect x='6' y='2' width='3' height='12' fill='%23e8ecff'/%3E%3Crect x='10' y='2' width='3' height='12' fill='%23e8ecff'/%3E%3Crect x='2' y='7' width='7' height='3' fill='%23ffd23f'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -34,8 +34,8 @@
     <!-- 首页 -->
     <section id="screen-home" class="screen">
       <div class="hero">
-        <div class="hero-title">AMIDAKUJI</div>
-        <div class="hero-sub">鬼脚图 · 命运抽签</div>
+        <div class="hero-title">NOBODY DID IT</div>
+        <div class="hero-sub">无人负责 · 夜行列车 · 命运抽签</div>
       </div>
       <div class="tabs">
         <button class="tab active" data-tab="create">创建房间</button>
@@ -61,7 +61,7 @@
         <input id="in-code" maxlength="5" placeholder="ABCDE" style="text-transform:uppercase;letter-spacing:2px">
         <button id="btn-join" class="btn primary big">加入房间</button>
       </div>
-      <div class="footnote">每个人都画下命运的一笔<br>→ 选择起点 → 全员同时揭晓</div>
+      <div class="footnote">每个人都扳下命运的道岔<br>→ 选择登车站 → 列车夜行，全员同时揭晓</div>
     </section>
 
     <!-- 大厅 -->
@@ -109,6 +109,10 @@
               <option value="80">80</option>
             </select>
           </div>
+          <div class="mode-col">
+            <label>夜色雾</label>
+            <button id="btn-fog" class="btn small round-toggle">迷雾开启</button>
+          </div>
         </div>
         <div id="round-hint" class="share-hint" style="margin-top:6px"></div>
       </div>
@@ -123,7 +127,7 @@
         </div>
       </div>
       <div id="overflow-note" class="waiting-hint hidden">参与者多于选项数，超出者本轮将作为观众</div>
-      <button id="btn-start" class="btn primary big host-only hidden">开始画线</button>
+      <button id="btn-start" class="btn primary big host-only hidden">开始施工</button>
       <div id="waiting-hint" class="waiting-hint">等待房主开始…</div>
     </section>
 
@@ -156,6 +160,15 @@
       </div>
       <button id="btn-again" class="btn primary big host-only hidden">再来一局</button>
       <button id="btn-reconfig" class="btn big host-only hidden">修改结果重开</button>
+
+      <!-- 事故调查回放（所有玩家可见） -->
+      <div class="panel" id="replay-panel">
+        <div class="done-title">— 事故调查回放 —</div>
+        <div id="replay-report" class="replay-report"></div>
+        <div class="replay-quote">「没有人对把列车送到这里负全责<br>——但每个人都帮了一点忙」</div>
+        <canvas id="replay-board" class="replay-board"></canvas>
+      </div>
+
       <div class="waiting-hint" id="done-waiting">等待房主决定下一局…</div>
     </section>
 
