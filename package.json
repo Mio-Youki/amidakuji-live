@@ -1,8 +1,8 @@
 {
   "name": "amidakuji-live",
-  "version": "0.1.0",
+  "version": "0.16.0",
   "private": true,
-  "description": "像素抽签 · 在线阿弥陀籤（Ghost Leg）多人抽签游戏",
+  "description": "无人负责 · 夜行列车（Nobody Did It）——在线多人鬼脚图/阿弥陀籤抽签游戏：暗轨/待命/雾幕/事故调查回放",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
