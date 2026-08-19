@@ -104,7 +104,7 @@ sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 
 /* ---------------- 加载全部前端脚本（同一上下文，共享词法作用域） ---------------- */
-const files = ['game.js', 'audio.js', 'voice.js', 'board.js', 'pixelate.js', 'state.js', 'net.js', 'ui.js', 'input.js', 'app.js'];
+const files = ['game.js', 'audio.js', 'voice.js', 'board.js', 'pixelate.js', 'state.js', 'net.js', 'ui.js', 'input.js', 'home-scene.js', 'app.js'];
 let code = '';
 for (const f of files) {
   code += '\n;/* ==== ' + f + ' ==== */\n' + fs.readFileSync(path.join(__dirname, '..', 'public', f), 'utf8');
@@ -122,6 +122,7 @@ assert.strictEqual(typeof sandbox.emitAck, 'function', 'emitAck（net 层）已�
 assert.strictEqual(typeof sandbox.isHost, 'function', 'isHost（state 层）已定义');
 assert.strictEqual(typeof sandbox.resetToHome, 'function', 'resetToHome 已定义');
 assert.strictEqual(typeof sandbox.bindEvents, 'function', 'bindEvents（app 装配层）已定义');
+assert.strictEqual(typeof sandbox.HomeScene, 'object', 'HomeScene（首页氛围场景）已定义');
 
 // socket 事件接线
 for (const ev of ['state', 'line_drawn', 'connect', 'connect_error', 'disconnect']) {

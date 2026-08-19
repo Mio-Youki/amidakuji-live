@@ -17,15 +17,17 @@
 | `public/voice.js` | 麦克风：音高检测、DSP 降噪、中继采集/播放 | `Voice.detectPitch/downsample/processInput/startRelay/playRelay` + 状态代理属性 |
 | `public/board.js` | Canvas 画板：几何、绘制、走线动画、自定义背景层、**夜色雾与暗轨渲染** | `COL`(画布配色)、`computeGeometry`、`draw`、`drawSlot/drawResult/drawMarker`、`drawVoteInfo`、`runReveal`（车头灯雾界）、`setBg`、`FOG_WINDOW=5` |
 | `public/pixelate.js` | **像素化背景**：图片降采样像素化 + 背景状态（`// @ts-check`） | `pickPixelatedSize`（纯函数，Node 可测）、`PixelBG.set/clear/pixelateFile` |
-| `public/state.js` | **状态层**：全局状态 + 基础工具（被后续模块依赖，必须先加载） | `S` `meId` `pickSel` `pending`；`isHost/myTurn/isSolo/canContinuous`、`toast/ackToast/escapeHtml/show/setHostUI/setConn`、`session/saveSession/clearSession` |
+| `public/state.js` | **状态层**：全局状态 + 基础工具（被后续模块依赖，必须先加载） | `S` `meId` `pickSel` `pending`；`isHost/myTurn/isSolo/canContinuous`、`toast/ackToast/escapeHtml/show`（同步首页场景启停）`/setHostUI/setConn`、`session/saveSession/clearSession` |
 | `public/net.js` | **网络层**：Socket.IO 连接/事件、语音中继通道、请求封装 | `socket` `audioSocket`、`emitAck`、`relayCaptureHandler`、`socket.on('state'…)`、`visibilitychange` |
 | `public/ui.js` | **界面层**：各阶段渲染、画板装配、倒计时、归票动画、退出清理 | `render*` 系列、`drawBoard`、`buildDrawControls`、`maybeStartVoteAnim`、`startCountdown/stopCountdown`、`resetToHome` |
 | `public/input.js` | **输入层**：画法状态与按住交互（点击/语音/吹气/倾斜/命运） | `drawMethod`、`startHold/holdLoop/endHold/updateMeter`、`methodHint` |
+| `public/home-scene.js` | **首页氛围层**：原创低分辨率夜行列车 Canvas 循环（与游戏状态解耦，程序化绘制）；**元素参数化**（`DEFAULT_HOME_SCENE`，运行时优先读 `window.HOME_SCENE`——供 `tools/img2asset.html` 打开调参/实时预览/保存写回；支持 `scenes` 段名 + `sceneBorders` 边界 + 元素 `hidden` 隐藏 + 删除容错 + **按场景数组参数**（`val()`/`valAt()` 统一取值）） | `HomeScene.init/start/stop`、`draw/train/fogBank/signal/bridge`、`val/valAt/scene`、`CFG`/`DEFAULT_HOME_SCENE` |
+| `public/img2asset.html` | **开发工具**：图片素材 → base64 PNG 数据（生成 `HOME_ASSETS` 供 home-scene.js 替换程序化绘制） | 拖拽/选择 → 像素化预览 → 生成 → 复制；元素预设尺寸取自 home-scene.js 绘制参数 |
 | `public/types.js` | **类型定义（仅 JSDoc，无运行时）**：客户端状态模型 | `RoomState/PlayerState/BoardCfg/VoiceSample/SocketEvents` |
-| `public/globals.d.ts` | **全局声明（仅类型）**：外部全局与音频/画板/背景 API | `io`、`AudioSysApi/BoardApi/VoiceApi/PixelBGApi` |
+| `public/globals.d.ts` | **全局声明（仅类型）**：外部全局与音频/画板/背景/首页场景 API | `io`、`AudioSysApi/BoardApi/VoiceApi/PixelBGApi/HomeSceneApi` |
 | `public/app.js` | **装配层（入口）**：交互绑定 + 初始化 | `bindEvents`、`fallbackCopy`、`init`、`DOMContentLoaded` |
 | `public/worklet-capture.js` | AudioWorklet 采集处理器 | `registerProcessor('capture-processor')` |
-| `public/demo.html` | 单人本地演示页（无服务器） | `drawStatic` / `run` / `?mode=flicker|end` |
+| `public/demo.html` | 单人本地演示页（无服务器） | `drawStatic` / `run` / `?mode=fog|end` |
 
 > **跨模块约定**：模块间通过**全局词法作用域**共享（`state.js` 先加载声明 `const $`/`let S` 等，后续模块直接引用）；顶层 `let/const` 不得重复声明；新模块按此表顺序插入 `index.html`。
 
@@ -64,6 +66,7 @@
 | 界面/元素 | 屏幕容器 | 渲染/生成代码 | 样式 |
 |---|---|---|---|
 | 首页：创建/加入表单 | `#screen-home` | `index.html #tab-create/#tab-join`；事件 `app.js btn-create/btn-join` | `.tabs .panel input textarea select` |
+| 首页：夜行列车氛围动画 | 〃 | `home-scene.js`（48 秒循环：夜原 / 雾幕 / 山口信号 / 月下桥面）→ `#home-scene` | `.home-scene #home-scene` |
 | 大厅：房间码+复制 | `#screen-lobby` | `ui.js renderLobby` → `#lobby-code #btn-copy` | `.code-row .code` |
 | 大厅：参与者列表 | 〃 | `ui.js renderLobby` → `#player-list`（P#/颜色点/房主/托管标签） | `.player-item .dot .tag` |
 | 大厅：结果列表 + [+]编辑 | 〃 | `ui.js renderLobby` → `#result-list`（房主见 `+` 打开弹层） | `.result-chip .add-chip` |
@@ -138,7 +141,7 @@ S = { myId, code, phase, N, results, levels, nextLevel, players[…], turnIdx, t
 
 | 场景 | 命令/入口 |
 |---|---|
-| 全量测试 | `npm test`（音高/DSP 单测 + e2e 全场景） |
+| 全量测试 | `npm test`（音高/DSP、像素化、游戏逻辑单测 + 客户端冒烟 + e2e 全场景） |
 | 单人试玩 | 浏览器开 `http://127.0.0.1:3000` 建房即可单人开局 |
 | 本地多人 | 普通窗口 + 无痕窗口（两个窗口 = 两人） |
 | 演示页 | `http://127.0.0.1:3000/demo.html`（无服务器，`?mode=fog` 看夜色雾、`?mode=end` 看落定） |

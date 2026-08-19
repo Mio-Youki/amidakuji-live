@@ -45,7 +45,7 @@ N 条轨道、底部 N 个终点站 → 轮流**扳道岔**（或暗轨施工/�
 ## 测试
 
 ```bash
-npm test        # 音高/DSP/像素化单测 + e2e 全场景（3人局/单人/投票/单轮/语音/托管/背景/TTL/僵尸房/暗轨/雾幕…）
+npm test        # 音高/DSP、像素化、游戏逻辑单测 + 客户端冒烟 + e2e 全场景（3人局/单人/投票/单轮/语音/托管/背景/TTL/僵尸房/暗轨/雾幕…）
 ```
 
 ## 文档索引
@@ -61,7 +61,8 @@ npm test        # 音高/DSP/像素化单测 + e2e 全场景（3人局/单人/�
 | [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) | 协同规范（改动必须配套更新文档） |
 | [docs/DEPLOY.md](docs/DEPLOY.md) | 本地一键运行 / Render 公网部署 |
 | [voicepublic.md](voicepublic.md) | 语音广播技术（架构/问题记录/演进方向） |
+| [tools/README.md](tools/README.md) | 生产工具：像素风小动画装配器（独立产品，不随发布） |
 
 ## 技术栈
 
-Node.js + Express + Socket.IO（实时同步）· 原生 JS + Canvas（画板/动画）· Web Audio（音效/音高/中继）· 无构建工具、零外部运行时依赖
+Node.js + Express + Socket.IO（实时同步）· 原生 JS + Canvas（画板/动画）· Web Audio（音效/音高/中继）· 无构建工具、无外部基础设施依赖

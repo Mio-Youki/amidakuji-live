@@ -95,6 +95,16 @@ input[type="range"] { width: 100%; accent-color: var(--yellow); margin: 4px 0; }
 .btn:disabled { opacity: .4; pointer-events: none; }
 
 .footnote { text-align: center; color: var(--dim); font-size: 9px; margin-top: 16px; line-height: 2.2; }
+.home-scene {
+  position: relative; width: 100%; height: clamp(132px, 31vw, 186px); margin-top: 10px;
+  overflow: hidden; border-bottom: 3px solid #18294b; opacity: .94;
+}
+.home-scene::before {
+  content: ''; position: absolute; z-index: 1; inset: 0; pointer-events: none;
+  background: linear-gradient(to bottom, var(--bg) 0%, transparent 28%, transparent 82%, rgba(5,8,20,.4) 100%);
+}
+#home-scene { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+@media (prefers-reduced-motion: reduce) { .home-scene { opacity: .82; } }
 
 .code-row { display: flex; gap: 10px; align-items: center; }
 .code { font-size: 26px; color: var(--yellow); letter-spacing: 6px; text-shadow: 2px 2px 0 #7d0f24; flex: 1; }

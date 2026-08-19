@@ -3,6 +3,7 @@ node_modules
 .dsh-vision-router
 test
 docs
+tools
 *.md
 .git
 .diag

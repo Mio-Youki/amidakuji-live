@@ -1,20 +1,27 @@
 @echo off
-chcp 65001 >nul
-title åƒç´ æŠ½ç­¾æœåŠ¡å™¨
+title ÎŞÈË¸ºÔğ Ò¹ĞĞÁĞ³µ ·şÎñÆ÷
 cd /d "%~dp0"
 
 if not exist node_modules (
-  echo [é¦–æ¬¡è¿è¡Œ] æ­£åœ¨å®‰è£…ä¾èµ–ï¼Œè¯·ç¨å€™â€¦
+  echo [Ê×´ÎÔËĞĞ] ÕıÔÚ°²×°ÒÀÀµ£¬ÇëÉÔºò...
   call npm install --no-audit --no-fund
   if errorlevel 1 (
-    echo ä¾èµ–å®‰è£…å¤±è´¥ï¼Œè¯·æ£€æŸ¥ç½‘ç»œåé‡è¯•ã€‚
+    echo ÒÀÀµ°²×°Ê§°Ü£¬Çë¼ì²éÍøÂçºóÖØÊÔ¡£
     pause
     exit /b 1
   )
 )
 
-echo æ­£åœ¨å¯åŠ¨æœåŠ¡å™¨ï¼šhttp://127.0.0.1:3000
-echo æŒ‰ Ctrl+C åœæ­¢ã€‚
+rem ¶Ë¿Ú 3000 ±»Õ¼ÓÃ = ·şÎñÆ÷ÒÑÔÚÔËĞĞ£¬Ö±½Ó´ò¿ªä¯ÀÀÆ÷£¨±ÜÃâ EADDRINUSE£©
+netstat -ano | findstr /c:":3000 " | findstr "LISTENING" >nul 2>nul
+if not errorlevel 1 (
+  echo ¼ì²âµ½·şÎñÆ÷ÒÑÔÚÔËĞĞ£¬Ö±½Ó´ò¿ªä¯ÀÀÆ÷...
+  start http://127.0.0.1:3000
+  exit /b 0
+)
+
+echo ÕıÔÚÆô¶¯·şÎñÆ÷£ºhttp://127.0.0.1:3000
+echo °´ Ctrl+C Í£Ö¹¡£
 start "" cmd /c "timeout /t 2 /nobreak >nul && start http://127.0.0.1:3000"
 node server.js
 pause

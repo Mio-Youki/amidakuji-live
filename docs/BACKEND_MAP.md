@@ -63,7 +63,7 @@ server.js
 
 | 场景 | 入口 |
 |---|---|
-| 全量 | `npm test`（pitch 单测 + 客户端冒烟 + e2e 全场景） |
+| 全量 | `npm test`（pitch/DSP、pixelate、game 逻辑单测 + 客户端冒烟 + e2e 全场景） |
 | e2e 调参 | 在 `test/e2e.js` 顶部设置环境变量（TURN_MS/REVEAL_MS/PICK_MS/VOTE_REVEAL_MS），`config.js` 启动时读取 |
 | 手工验证 | `npm start` → 浏览器建房/双窗口多人 |
 

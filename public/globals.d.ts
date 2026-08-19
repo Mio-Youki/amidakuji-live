@@ -57,6 +57,13 @@ interface PixelBGApi {
   pixelateFile(file: File, cb: (url: string | null) => void): void;
 }
 
+/** home-scene.js 暴露的首页低帧率氛围动画 API */
+interface HomeSceneApi {
+  init(): void;
+  start(): void;
+  stop(): void;
+}
+
 /** voice.js 暴露的麦克风/DSP API（状态属性由代理同步到内层） */
 interface VoiceApi {
   detectPitch(buffer: Float32Array, sampleRate: number): import('./types.js').VoiceSample;
@@ -88,4 +95,5 @@ declare var PixelBG: PixelBGApi;
 /** 倾斜画线：deviceorientation 注入的倾角（input.js 写入） */
 declare interface Window {
   __gamma?: number;
+  HomeScene?: HomeSceneApi;
 }

@@ -87,6 +87,8 @@ function setConn(on) {
 function show(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
   $('screen-' + name).classList.remove('hidden');
+  // 首页氛围场景不参与游戏阶段渲染，离开首页即暂停以节省移动端资源。
+  if (window.HomeScene) (name === 'home' ? window.HomeScene.start : window.HomeScene.stop)();
 }
 
 function setHostUI() {
