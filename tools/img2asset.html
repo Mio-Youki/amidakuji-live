@@ -1,0 +1,1826 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>像素风小动画装配器 · Pixel Scene Builder</title>
+<style>
+  :root { --bg:#0b1026; --panel:#141b3d; --ink:#e8ecff; --dim:#8b93c7; --yellow:#ffd23f; --cyan:#4dc3ff; }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: monospace; margin: 0; padding: 14px; }
+  h1 { color: var(--yellow); font-size: 13px; letter-spacing: 2px; margin: 0 0 2px; }
+  .sub { color: var(--dim); font-size: 10px; margin-bottom: 12px; }
+  .cols { display: flex; gap: 12px; flex-wrap: wrap; align-items: stretch; min-height: calc(100vh - 96px); }
+  .panel { background: var(--panel); border: 3px solid #0a0e22; padding: 12px; }
+  .p-import { width: 300px; }
+  .p-stage { flex: 1; min-width: 420px; }
+  .p-props { width: 320px; display: flex; flex-direction: column; }
+  label { display: block; font-size: 9px; color: var(--dim); margin: 9px 0 3px; letter-spacing: 1px; }
+  input[type=text], input[type=number], select {
+    width: 100%; background: #0d1330; color: var(--ink); border: 2px solid var(--dim);
+    padding: 6px; font-family: inherit; font-size: 11px; outline: none;
+  }
+  input[type=range] { width: 100%; accent-color: var(--yellow); }
+  .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .row input[type=number] { width: 70px; }
+  .drop {
+    border: 3px dashed var(--dim); padding: 18px; text-align: center; font-size: 10px;
+    color: var(--dim); cursor: pointer; margin-top: 8px;
+  }
+  .drop.over { border-color: var(--yellow); color: var(--yellow); }
+  button {
+    background: #1a2350; color: var(--ink); border: 3px solid #0a0e22; font-family: inherit;
+    font-size: 10px; padding: 8px 10px; cursor: pointer; margin-top: 8px; min-height: 36px;
+  }
+  button.primary { background: var(--yellow); color: #0b1026; border-color: #8a6d00; }
+  button:active { transform: translateY(2px); }
+  .lib { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .lib-item { width: 86px; text-align: center; cursor: pointer; border: 3px solid var(--dim); padding: 4px; background: #0d1330; }
+  .lib-item.active { border-color: var(--yellow); }
+  .lib-item canvas { width: 100%; image-rendering: pixelated; display: block; }
+  .lib-item .nm { font-size: 8px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  canvas.stage { image-rendering: pixelated; background: transparent; display: block; }
+  .stage-wrap { position: relative; margin-top: 8px; border: 3px solid var(--dim); background: #05070f; width: 100%; height: 218px; overflow: hidden; }
+  /* 显示框高度由 JS 按 cfg.w:cfg.h 比例计算（上限 = 视口高 × 2/3，防高比例 js 吞掉时间轴）；
+     双画布绝对定位 + JS 显式尺寸（fit × 缩放），像素化缩放；超出部分被容器裁剪 */
+  .stage-wrap canvas { position: absolute; left: 0; top: 0; display: block; image-rendering: pixelated; }
+  #home-scene { display: none; } /* 初始不载入场景：载入实际 js 后才显示 */
+  #stage { position: absolute; }
+  .zoom-badge { position: absolute; top: 3px; right: 3px; z-index: 5; font-size: 8px; color: var(--yellow); background: rgba(0,0,0,.65); padding: 1px 5px; display: none; }
+  .zoom-badge.on { display: block; }
+  .timeline { width: 100%; height: 20px; display: block; margin-top: 6px; border: 2px solid var(--dim); background: #05070f; cursor: crosshair; }
+  .scene-bar { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; min-height: 18px; align-items: center; }
+  .scene-chip { margin: 0; padding: 2px 6px; min-height: 18px; font-size: 8px; border-width: 2px; }
+  .scene-chip.active { border-color: var(--yellow); color: var(--yellow); background: #33270f; }
+  .scene-chip.add { border-style: dashed; border-color: var(--dim); color: var(--dim); }
+  .scene-chip .x { color: #ff5f7d; margin-left: 3px; }
+  .layer-body .hb.sbtn { margin: 0; padding: 2px 4px; min-height: 18px; font-size: 8px; line-height: 1; color: var(--dim); background: #1a2350; }
+  .layer-body .hb.sbtn.on { background: var(--yellow); color: #0b1026; }
+  .show-pop { z-index: 99; background: #101736; border: 2px solid var(--yellow); padding: 6px; min-width: 170px; box-shadow: 4px 4px 0 #000; }
+  .show-pop-title { font-size: 8px; color: var(--dim); margin-bottom: 4px; }
+  .show-row-wrap { margin-bottom: 5px; }
+  .show-row { display: flex; align-items: center; gap: 6px; width: 100%; margin: 2px 0; padding: 3px 6px; font-size: 9px; min-height: 20px; border-width: 2px; background: #1a2350; color: var(--dim); text-align: left; }
+  .show-row.on { border-color: #2fbf6a; color: var(--ink); background: #14301f; }
+  .show-row .idx { color: var(--yellow); min-width: 14px; }
+  .show-row .nm { flex: 1; }
+  .show-row .cnt { font-size: 8px; color: var(--dim); }
+  .win-wrap { margin: 2px 0 2px 20px; }
+  .win-bar { position: relative; height: 12px; background: #0a0e22; border: 1px solid var(--dim); cursor: copy; user-select: none; }
+  .win-seg { position: absolute; top: 0; bottom: 0; background: #2fbf6a; opacity: .85; cursor: grab; box-shadow: inset 0 0 0 1px #1a5c36; }
+  .win-seg i { position: absolute; top: 0; bottom: 0; width: 3px; background: #0b1026; cursor: ew-resize; }
+  .win-seg .win-hl { left: 0; }
+  .win-seg .win-hr { right: 0; }
+  .win-info { display: none; }
+  .sf-row { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; }
+  .sf-row .small { padding: 4px 6px; font-size: 9px; margin: 0; min-height: 24px; white-space: nowrap; }
+  .sf-sep { width: 1px; height: 18px; background: var(--dim); opacity: .4; flex: none; }
+  .sf-l { font-size: 7px; color: var(--dim); margin: 0; white-space: nowrap; }
+  .sf-l.nm { color: var(--cyan); }
+  .sf-n { width: 38px; padding: 3px 4px; font-size: 10px; }
+  .sf-c { width: 28px; height: 22px; padding: 0; border: 2px solid var(--dim); }
+  .sf-play { margin-left: auto; flex: none; }
+  .hint { font-size: 9px; color: var(--dim); line-height: 1.8; margin-top: 8px; }
+  .hint b { color: var(--yellow); }
+  .meta { font-size: 9px; color: var(--cyan); min-height: 12px; margin-top: 6px; }
+  .cf-group { font-size: 9px; color: var(--yellow); letter-spacing: 1px; margin: 10px 0 2px; border-bottom: 1px dashed #2c3560; padding-bottom: 2px; }
+  .props-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 4px; }
+  .props-head label { margin: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .props-head .small { margin: 0; min-height: 26px; padding: 4px 10px; }
+  #cfgform { flex: 1 1 0; height: 0; min-height: 100px; max-height: calc(100vh - 210px); overflow-y: auto; border: 2px solid #0a0e22; padding: 4px; margin-bottom: 6px; background: #0d1330; scrollbar-width: thin; scrollbar-color: #3a4678 #0a0e22; }
+  #cfgform::-webkit-scrollbar { width: 8px; }
+  #cfgform::-webkit-scrollbar-track { background: #0a0e22; }
+  #cfgform::-webkit-scrollbar-thumb { background: #3a4678; border-radius: 4px; }
+  #cfgform::-webkit-scrollbar-thumb:hover { background: #4a5890; }
+  .layer-card { border: 2px solid #1a2350; background: #101736; margin: 3px 0; }
+  .layer-card.global { border-color: var(--dim); }
+  .layer-card.img { border-color: #2a3a66; }
+  .layer-card.drag { opacity: .5; border-color: var(--yellow); }
+  .layer-card.hid { opacity: .45; }
+  .layer-head { display: flex; align-items: center; gap: 5px; padding: 4px 5px; cursor: pointer; font-size: 9px; }
+  .layer-head:hover { background: #16204a; }
+  .lgrip { color: var(--dim); cursor: grab; }
+  .layer-z { font-size: 8px; color: var(--yellow); min-width: 22px; }
+  .layer-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+  .layer-card.img .layer-name { color: var(--cyan); }
+  .lcarr { color: var(--yellow); font-size: 8px; width: 8px; }
+  .layer-head .hb { margin: 0; padding: 1px 5px; min-height: 16px; font-size: 8px; line-height: 1; }
+  .layer-head .hb.hid { background: #33270f; color: var(--dim); }
+  .layer-body { border-top: 1px dashed #2c3560; padding: 4px 6px 6px; }
+  .cf-row { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+  .cf-row label { flex: 1; margin: 0; font-size: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cf-row input[type=number] { width: 76px; }
+  .cf-row input[type=text] { width: 110px; }
+  .cf-row input[type=color] { width: 44px; height: 26px; padding: 0; border: 2px solid var(--dim); }
+  .cf-row input[type=checkbox] { width: auto; }
+  .cf-arr { display: flex; gap: 3px; flex-wrap: wrap; }
+  .cf-arr input[type=color] { width: 22px; height: 22px; padding: 0; border: 2px solid var(--dim); }
+  .cf-ro { font-size: 8px; color: var(--dim); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+</style>
+</head>
+<body>
+<h1>像素风小动画装配器 · PIXEL SCENE BUILDER</h1>
+<div class="sub">任意图片 → 像素化 → 拖拽装配（滚动/闪烁/脉动）→ 打开/保存场景 js（页面内直接改写配置，无需复制粘贴）。开发工具，不随游戏发布。</div>
+
+<div class="cols">
+  <!-- 左：素材导入与像素化 -->
+  <div class="panel p-import">
+    <label>导入素材（任意图片，非 8bit 亦可）</label>
+    <div id="drop" class="drop">拖入图片 / 点击选择</div>
+    <input id="file" type="file" accept="image/*" multiple hidden>
+    <label>像素化分辨率（宽，高按比例）</label>
+    <div class="row">
+      <input id="pw" type="number" min="8" value="160">
+      <button id="btn-repx" class="primary" style="margin-top:0">重像素化选中素材</button>
+    </div>
+    <label>减色色板</label>
+    <select id="palette">
+      <option value="">无（保持原色）</option>
+      <option value="pico8">PICO-8 · 32 色</option>
+      <option value="gb">Game Boy · 4 色</option>
+      <option value="vga">VGA · 16 色</option>
+    </select>
+    <label>均匀量化（每通道色阶，0=关）</label>
+    <input id="quant" type="range" min="0" max="8" value="0">
+    <label>去背景容差（0=关；按左上角颜色抠除）</label>
+    <input id="bgtol" type="range" min="0" max="60" value="0">
+    <label>素材库（点击选中，再"添加到场景"）</label>
+    <div id="lib" class="lib"></div>
+    <button id="btn-add" class="primary">添加到场景 →</button>
+    <button id="btn-del-src">删除选中素材</button>
+    <div class="meta" id="m-import"></div>
+  </div>
+
+  <!-- 中：场景文件 + 全局设置 + 画布 + 时间轴 -->
+  <div class="panel p-stage">
+    <div class="sf-row">
+      <button id="btn-open" class="small">打开 js</button>
+      <input id="jsfile" type="file" accept=".js,text/javascript,.json" hidden>
+      <span class="sf-sep"></span>
+      <label class="sf-l nm">全局</label>
+      <label class="sf-l nm">宽</label><input id="gw" class="sf-n" type="number" value="320">
+      <label class="sf-l nm">高</label><input id="gh" class="sf-n" type="number" value="118">
+      <label class="sf-l nm">周期</label><input id="gloop" class="sf-n" type="number" value="48">
+      <label class="sf-l nm">背景</label><input id="gbg" class="sf-c" type="color" value="#09132c">
+      <label class="sf-l"><input type="checkbox" id="showscene"> 场景层</label>
+      <button id="btn-play" class="small primary sf-play">⏸</button>
+    </div>
+    <div id="stage-wrap" class="stage-wrap">
+      <canvas id="home-scene"></canvas>
+      <canvas id="stage" class="stage"></canvas>
+      <div id="zoom-badge" class="zoom-badge"></div>
+    </div>
+    <div id="scene-bar" class="scene-bar"></div>
+    <canvas id="tl" class="timeline" width="320" height="20"></canvas>
+    <div class="meta" id="m-stage"></div>
+    <div class="hint">
+      画布<b>拖拽</b>移动、<b>拖右下角黄手柄</b>缩放、<b>点击</b>选中（图层栏自动定位展开）；时间轴点击/拖动跳转。
+      顶部工具栏「打开 js」读场景文件，图层栏右上角「保存 js」写回——全程页面内完成。
+    </div>
+  </div>
+
+  <!-- 右：图层栏（元素卡片） -->
+  <div class="panel p-props">
+    <div class="props-head">
+      <label>图层（点击卡片展开调参 · 拖拽排序=z）</label>
+      <button id="btn-save" class="small primary">保存 js</button>
+    </div>
+    <div id="cfgform"></div>
+    <div class="meta" id="m-props"></div>
+  </div>
+</div>
+
+<script src="../public/home-scene.js" onerror="window.__sceneLoadFail = true"></script>
+<script>
+'use strict';
+/* ---------------- 色板 ---------------- */
+const PALETTES = {
+  pico8: [[0,0,0],[29,43,83],[126,37,83],[0,135,81],[171,82,54],[95,87,79],[194,195,199],[255,241,232],[255,0,77],[255,163,0],[255,236,39],[0,228,54],[41,173,255],[131,118,156],[255,119,168],[255,204,170],[41,54,111],[43,83,120],[112,120,51],[131,143,196],[159,73,28],[83,54,32],[81,31,25],[141,135,123],[79,91,40],[87,79,74],[187,160,119],[142,154,114],[129,156,143],[105,115,98],[178,161,131],[227,204,155]],
+  gb: [[15,56,15],[48,98,48],[139,172,15],[155,188,15]],
+  vga: [[0,0,0],[128,0,0],[0,128,0],[128,128,0],[0,0,128],[128,0,128],[0,128,128],[192,192,192],[128,128,128],[255,0,0],[0,255,0],[255,255,0],[0,0,255],[255,0,255],[0,255,255],[255,255,255]],
+};
+const $ = id => document.getElementById(id);
+
+/* ---------------- 状态 ---------------- */
+const state = {
+  sources: [],        // {id, name, img, dataUrl, w, h}
+  selSrc: null,
+  elements: [],       // {id, name, src, x, y, w, h, alpha, z, scroll:{speed,span,dir}, anim, animMs}
+  selEl: null,
+  playing: true,
+  t: 0,
+  last: 0,
+  raf: 0,
+  cw: 320, ch: 118,
+  showScene: false,   // 初始不预设载入场景：打开实际 js 后场景层才显示（对应画面）
+  sceneParamsMode: false, // 已打开参数化场景（HOME_SCENE）：素材写入其 images 层，保存随配置写回
+  lastTlScene: -1,    // 图层栏跟随时间轴：当前编辑场景（播放头所在段）
+  zoom: 1,            // 画布内容缩放（Alt+滚轮；1=适应显示框）
+};
+
+/* ---------------- 像素化管线 ---------------- */
+function nearestPalette(r, g, b, pal) {
+  let bi = 0, bd = Infinity;
+  for (let i = 0; i < pal.length; i++) {
+    const dr = r - pal[i][0], dg = g - pal[i][1], db = b - pal[i][2];
+    const d = dr * dr + dg * dg + db * db;
+    if (d < bd) { bd = d; bi = i; }
+  }
+  return pal[bi];
+}
+function pixelate(img, w, h) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  g.clearRect(0, 0, w, h);
+  g.drawImage(img, 0, 0, w, h);
+  const data = g.getImageData(0, 0, w, h);
+  const d = data.data;
+  const pal = PALETTES[$('palette').value] || null;
+  const quant = parseInt($('quant').value) || 0;
+  const tol = (parseInt($('bgtol').value) || 0) * 3;
+  const bg = tol > 0 ? [d[0], d[1], d[2]] : null;
+  const k = quant > 1 ? 255 / (quant - 1) : 0;
+  for (let i = 0; i < d.length; i += 4) {
+    if (bg) {
+      const dist = Math.abs(d[i] - bg[0]) + Math.abs(d[i + 1] - bg[1]) + Math.abs(d[i + 2] - bg[2]);
+      if (dist <= tol) { d[i + 3] = 0; continue; }
+    }
+    if (pal) {
+      const c2 = nearestPalette(d[i], d[i + 1], d[i + 2], pal);
+      d[i] = c2[0]; d[i + 1] = c2[1]; d[i + 2] = c2[2];
+    } else if (k) {
+      d[i] = Math.round(Math.round(d[i] / k) * k);
+      d[i + 1] = Math.round(Math.round(d[i + 1] / k) * k);
+      d[i + 2] = Math.round(Math.round(d[i + 2] / k) * k);
+    }
+  }
+  g.putImageData(data, 0, 0);
+  return c;
+}
+
+/* ---------------- 素材库 ---------------- */
+function addSource(img, name, frames) {
+  const w = Math.max(8, parseInt($('pw').value) || 160);
+  const h = Math.max(4, Math.round(w * (img.naturalHeight / Math.max(1, img.naturalWidth))));
+  const c = pixelate(img, w, h);
+  const src = { id: 's' + Math.random().toString(36).slice(2, 7), name: name || 'src' + (state.sources.length + 1), img: img, dataUrl: c.toDataURL('image/png'), w: w, h: h, frames: frames || 1 };
+  state.sources.push(src);
+  state.selSrc = src.id;
+  renderLib();
+  $('m-import').textContent = '已导入 ' + src.name + '（像素化 ' + w + '×' + h + (src.frames > 1 ? ' · ' + src.frames + '帧' : '') + '）——点「添加到场景」';
+}
+function renderLib() {
+  const lib = $('lib');
+  lib.innerHTML = '';
+  for (const s of state.sources) {
+    const d = document.createElement('div');
+    d.className = 'lib-item' + (state.selSrc === s.id ? ' active' : '');
+    const cv = document.createElement('canvas');
+    cv.width = s.w; cv.height = s.h;
+    const g = cv.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    const im = new Image();
+    im.onload = () => { g.clearRect(0, 0, s.w, s.h); g.drawImage(im, 0, 0); };
+    im.src = s.dataUrl;
+    const nm = document.createElement('div');
+    nm.className = 'nm';
+    nm.textContent = s.name + ' ' + s.w + '×' + s.h;
+    d.appendChild(cv);
+    d.appendChild(nm);
+    d.onclick = () => { state.selSrc = s.id; renderLib(); };
+    lib.appendChild(d);
+  }
+  $('btn-add').disabled = !state.sources.length;
+}
+function selSource() { return state.sources.find(s => s.id === state.selSrc); }
+
+/* ---------------- 元素 ---------------- */
+function addElement(src) {
+  const el = {
+    id: 'e' + Math.random().toString(36).slice(2, 7),
+    name: src.name,
+    src: src.dataUrl,
+    x: Math.floor((state.cw - src.w) / 2), y: Math.floor((state.ch - src.h) / 2),
+    w: src.w, h: src.h,
+    alpha: 1, z: 99, // 素材浮于程序化场景之上（home-scene 的 images 画在程序化层之后）
+    scroll: { speed: 0, span: src.w, dir: 'left' },
+    anim: 'static', animMs: 700,
+    frames: src.frames || 1, fps: 8,
+  };
+  state.elements.push(el);
+  if (state.sceneParamsMode && window.HOME_SCENE) {
+    // 场景参数模式：同一引用写入 HOME_SCENE.images → 场景层实时渲染 + 保存随配置写回
+    (window.HOME_SCENE.images = window.HOME_SCENE.images || []).push(el);
+  }
+  state.selEl = el.id;
+  ensureImage(el);
+  buildLayerList(layerCfg());
+  renderStage();
+  renderTimeline();
+  $('m-stage').textContent = '已添加 ' + el.name + '——拖拽调位置，点击卡片/画布展开参数' + (state.sceneParamsMode ? '（将随场景配置一起保存）' : '');
+}
+function selEl() { return state.elements.find(e => e.id === state.selEl); }
+
+/* ---------------- 场景渲染（预览与导出共用逻辑） ---------------- */
+function scrollOffset(e, t) {
+  if (!e.scroll || !e.scroll.speed) return 0;
+  const span = e.scroll.span || e.w || 1;
+  const off = (t * e.scroll.speed) % span;
+  return e.scroll.dir === 'right' ? off : -off;
+}
+function elementAlpha(e, t) {
+  if (e.anim === 'blink') {
+    const on = Math.floor((t * 1000) / Math.max(50, e.animMs)) % 2 === 0;
+    return e.alpha * (on ? 1 : 0.25);
+  }
+  return e.alpha;
+}
+function elementScale(e, t) {
+  if (e.anim === 'pulse') return 1 + 0.15 * Math.sin((t * 1000 / Math.max(200, e.animMs)) * Math.PI * 2);
+  return 1;
+}
+function drawElement(ctx, e, t, imgMap) {
+  const img = imgMap[e.id] || e._img;
+  if (!img || !img.width) return;
+  // 多帧（sprite sheet 横向）：frames > 1 时按 fps 取帧
+  const frames = e.frames > 1 ? e.frames : 1;
+  const fx = frames > 1 ? Math.floor(t * (e.fps || 8)) % frames : 0;
+  const sw = frames > 1 ? Math.floor(img.width / frames) : img.width;
+  const scale = elementScale(e, t);
+  const w = e.w * scale, h = e.h * scale;
+  const ox = scrollOffset(e, t);
+  ctx.globalAlpha = elementAlpha(e, t);
+  const blit = (dx, dy) => ctx.drawImage(img, fx * sw, 0, sw, img.height, Math.round(dx), Math.round(dy), w, h);
+  if (e.scroll && e.scroll.speed && e.scroll.span) {
+    const span = e.scroll.span;
+    const dir = e.scroll.dir === 'right' ? 1 : -1;
+    const n = Math.ceil(state.cw / span) + 3;
+    for (let j = 0; j < n; j++) blit(e.x + j * span * dir - ox * dir, e.y);
+  } else {
+    blit(e.x + ox, e.y);
+  }
+  ctx.globalAlpha = 1;
+}
+function renderStage() {
+  const cv = $('stage');
+  cv.width = state.cw; cv.height = state.ch;
+  const ctx = cv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  if (state.showScene) {
+    ctx.clearRect(0, 0, state.cw, state.ch); // 透明：透出底层场景层（home-scene 实时动画）
+  } else {
+    ctx.fillStyle = $('gbg').value || '#000';
+    ctx.fillRect(0, 0, state.cw, state.ch);
+  }
+  // 场景参数模式：素材由场景层（home-scene 的 images 层）渲染，本画布不重复绘制；
+  // 装配模式：素材由本画布渲染。
+  if (!state.sceneParamsMode) {
+    const imgMap = {};
+    for (const e of state.elements) if (e._img) imgMap[e.id] = e._img;
+    const sorted = [...state.elements].sort((a, b) => a.z - b.z);
+    for (const e of sorted) {
+      if (e.hidden) continue; // 隐藏：图层栏按钮切换，装配模式画布不绘制
+      drawElement(ctx, e, state.t, imgMap);
+    }
+  }
+  // 选中高亮 + 缩放手柄（不依赖素材图，位置来自数据）
+  const sel = selEl();
+  if (sel) {
+    const ox = scrollOffset(sel, state.t);
+    ctx.strokeStyle = '#ffd23f';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 2]);
+    ctx.strokeRect(Math.round(sel.x + ox) - 1, Math.round(sel.y) - 1, sel.w + 2, sel.h + 2);
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#ffd23f';
+    ctx.fillRect(Math.round(sel.x + ox + sel.w - 3), Math.round(sel.y + sel.h - 3), 7, 7);
+  }
+}
+function loop(now) {
+  if (!state.playing) { state.raf = 0; return; }
+  const dt = Math.min(0.2, (now - state.last) / 1000);
+  state.last = now;
+  state.t += dt;
+  // 图层栏跟随时间轴：播放头跨场景 → 重建图层栏（显示当前场景值）+ 场景栏高亮
+  const cs = tlScene();
+  if (cs !== state.lastTlScene) {
+    state.lastTlScene = cs;
+    if (window.HOME_SCENE) { buildLayerList(layerCfg()); renderSceneBar(); }
+  }
+  renderStage();
+  renderTimeline();
+  state.raf = requestAnimationFrame(loop);
+}
+// 任何参数/显隐修改后的画布刷新：暂停时也能立即看到效果（HomeScene.seek 强制场景层重绘一帧）
+function refreshStage() {
+  renderStage();
+  renderTimeline();
+  if (window.HomeScene && HomeScene.seek) HomeScene.seek(state.t);
+}
+// 显示框高度跟随 cfg.w:cfg.h 比例（初始占满显示框；上限 = 视口高 × 2/3，防高比例 js 吞掉时间轴）
+function resizeStageWrap() {
+  const wrap = $('stage-wrap');
+  if (!wrap) return;
+  const boxW = wrap.clientWidth || 320;
+  const maxH = Math.max(100, Math.round(window.innerHeight * 2 / 3));
+  const ratioH = boxW * Math.max(1, state.ch) / Math.max(1, state.cw);
+  wrap.style.height = Math.max(100, Math.min(maxH, Math.round(ratioH))) + 'px';
+  applyCanvasDisplay();
+}
+// 画布内容显式尺寸 = cfg 尺寸 × (fit × zoom)：zoomed 时超出显示框被容器裁剪（像素化缩放）
+function applyCanvasDisplay() {
+  const wrap = $('stage-wrap');
+  if (!wrap) return;
+  const boxW = wrap.clientWidth || 320;
+  const boxH = parseFloat(wrap.style.height) || 218;
+  const fit = Math.min(boxW / Math.max(1, state.cw), boxH / Math.max(1, state.ch));
+  const s = fit * (state.zoom || 1);
+  const cw = Math.max(2, Math.round(state.cw * s));
+  const ch = Math.max(2, Math.round(state.ch * s));
+  const hs = document.getElementById('home-scene');
+  const st = document.getElementById('stage');
+  if (hs) { hs.style.width = cw + 'px'; hs.style.height = ch + 'px'; }
+  if (st) { st.style.width = cw + 'px'; st.style.height = ch + 'px'; }
+  const zb = document.getElementById('zoom-badge');
+  if (zb) {
+    const z = state.zoom || 1;
+    zb.textContent = '×' + z.toFixed(1) + '（双击复位）';
+    zb.classList.toggle('on', Math.abs(z - 1) > 0.01);
+  }
+}
+$('stage-wrap').addEventListener('wheel', ev => {
+  if (!ev.altKey) return;
+  ev.preventDefault();
+  state.zoom = Math.max(0.2, Math.min(8, (state.zoom || 1) * (ev.deltaY < 0 ? 1.1 : 1 / 1.1)));
+  applyCanvasDisplay();
+  refreshStage();
+}, { passive: false });
+$('stage-wrap').addEventListener('dblclick', () => {
+  if (Math.abs((state.zoom || 1) - 1) > 0.01) { state.zoom = 1; applyCanvasDisplay(); refreshStage(); }
+});
+window.addEventListener('resize', () => { resizeStageWrap(); renderStage(); renderTimeline(); });
+function ensureImage(e) {
+  if (e._img && e._img.width) return;
+  const im = new Image();
+  im.onload = () => { e._img = im; renderStage(); };
+  im.src = e.src;
+  e._img = im;
+}
+function ensureAllImages() { for (const e of state.elements) ensureImage(e); }
+
+/* ---------------- 交互：拖拽 / 缩放 / 选中 ---------------- */
+let drag = null;
+const stage = $('stage');
+function stagePos(ev) {
+  // object-fit: contain + left-top 后：内容框 = 按 cfg 比例缩放的左顶对齐矩形
+  const r = stage.getBoundingClientRect();
+  const scale = Math.min(r.width / state.cw, r.height / state.ch);
+  return { x: (ev.clientX - r.left) / scale, y: (ev.clientY - r.top) / scale };
+}
+stage.addEventListener('pointerdown', ev => {
+  const p = stagePos(ev);
+  const sorted = [...state.elements].sort((a, b) => b.z - a.z);
+  for (const e of sorted) {
+    const ox = scrollOffset(e, state.t);
+    const x0 = e.x + ox, y0 = e.y;
+    if (p.x >= x0 && p.x <= x0 + e.w && p.y >= y0 && p.y <= y0 + e.h) {
+      state.selEl = e.id;
+      if (p.x >= x0 + e.w - 12 && p.y >= y0 + e.h - 12) {
+        drag = { type: 'resize', el: e, sx: p.x, sy: p.y, ow: e.w, oh: e.h };
+      } else {
+        drag = { type: 'move', el: e, sx: p.x, sy: p.y, ox: e.x, oy: e.y, scrollOx: ox };
+      }
+      if (window.HOME_SCENE || state.elements.length) {
+        buildLayerList(layerCfg());
+        focusLayerCard(e.id);
+      }
+      renderStage();
+      return;
+    }
+  }
+  state.selEl = null;
+  if (window.HOME_SCENE || state.elements.length) buildLayerList(layerCfg());
+  renderStage();
+});
+stage.addEventListener('pointermove', ev => {
+  if (!drag) return;
+  const p = stagePos(ev);
+  const e = drag.el;
+  if (drag.type === 'move') {
+    e.x = Math.round(drag.ox + (p.x - drag.sx) - drag.scrollOx);
+    e.y = Math.round(drag.oy + (p.y - drag.sy));
+  } else {
+    e.w = Math.max(4, Math.round(drag.ow + (p.x - drag.sx)));
+    e.h = Math.max(4, Math.round(drag.oh + (p.y - drag.sy)));
+    e.scroll.span = e.w;
+  }
+  renderStage();
+});
+stage.addEventListener('pointerup', () => { if (drag) refreshStage(); drag = null; });
+stage.addEventListener('pointerleave', () => { if (drag) refreshStage(); drag = null; });
+
+/* ---------------- 导入 / 按钮 ---------------- */
+const drop = $('drop');
+drop.addEventListener('click', () => $('file').click());
+drop.addEventListener('dragover', ev => { ev.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', ev => { ev.preventDefault(); drop.classList.remove('over'); loadFiles(ev.dataTransfer.files); });
+$('file').addEventListener('change', () => loadFiles($('file').files));
+// 多文件导入：1 张 = 单素材；多张 = 合成横向 sprite sheet（帧序列素材）
+function loadFiles(files) {
+  if (!files || !files.length) return;
+  const list = [...files].filter(f => f.type.startsWith('image/'));
+  if (!list.length) { $('m-import').textContent = '请选择图片文件'; return; }
+  if (list.length === 1) {
+    const f = list[0];
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => addSource(img, f.name.replace(/\.[^.]+$/, '').slice(0, 10), 1);
+      img.onerror = () => { $('m-import').textContent = '图片解码失败'; };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(f);
+    return;
+  }
+  // 多张 → 逐张像素化 → 横向拼 sheet
+  const imgs = [];
+  let done = 0;
+  for (const f of list) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => { imgs.push(img); done++; if (done === list.length) finishCompose(); };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(f);
+  }
+  function finishCompose() {
+    const w = Math.max(8, parseInt($('pw').value) || 160);
+    const h = Math.max(4, Math.round(w * (imgs[0].naturalHeight / Math.max(1, imgs[0].naturalWidth))));
+    const sheet = document.createElement('canvas');
+    sheet.width = w * imgs.length; sheet.height = h;
+    const g = sheet.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    imgs.forEach((im, i) => g.drawImage(pixelate(im, w, h), i * w, 0));
+    const src = {
+      id: 's' + Math.random().toString(36).slice(2, 7),
+      name: (list[0].name.replace(/\.[^.$]+$/, '').slice(0, 8) || 'frame') + '×' + imgs.length,
+      img: sheet,
+      dataUrl: sheet.toDataURL('image/png'),
+      w: w, h: h, frames: imgs.length,
+    };
+    state.sources.push(src);
+    state.selSrc = src.id;
+    renderLib();
+    $('m-import').textContent = '已合成 ' + imgs.length + ' 帧素材「' + src.name + '」（' + w + '×' + h + ' ×' + imgs.length + ' 帧）——点「添加到场景」';
+  }
+}
+$('btn-repx').addEventListener('click', () => {
+  const s = selSource();
+  if (!s) { $('m-import').textContent = '先选中素材'; return; }
+  const w = Math.max(8, parseInt($('pw').value) || 160);
+  const h = Math.max(4, Math.round(w * (s.h / s.w)));
+  const c = pixelate(s.img, w, h);
+  s.dataUrl = c.toDataURL('image/png');
+  s.w = w; s.h = h;
+  renderLib();
+  $('m-import').textContent = '已按新参数重新像素化 ' + s.name;
+});
+$('btn-add').addEventListener('click', () => { const s = selSource(); if (s) addElement(s); });
+$('btn-del-src').addEventListener('click', () => {
+  const s = selSource();
+  if (!s) return;
+  state.sources = state.sources.filter(x => x.id !== s.id);
+  state.selSrc = state.sources.length ? state.sources[0].id : null;
+  renderLib();
+});
+$('btn-play').addEventListener('click', () => {
+  state.playing = !state.playing;
+  $('btn-play').textContent = state.playing ? '⏸' : '▶';
+  if (state.playing) {
+    state.last = performance.now();
+    state.raf = requestAnimationFrame(loop);
+    if (window.HomeScene) HomeScene.start(); // 场景层（home-scene 动画）同步播放
+  } else {
+    if (window.HomeScene) HomeScene.stop(); // 场景层同步暂停
+  }
+});
+/* buildExportText 供「保存 js」（装配模式）使用；导出 UI 已移除（页面内改写替代复制粘贴） */
+
+/* ---------------- 装配模式导出：自包含动画代码 ---------------- */
+function buildExportText() {
+  const els = state.elements.map(e => ({
+    name: e.name, src: e.src, x: e.x, y: e.y, w: e.w, h: e.h,
+    alpha: e.alpha, z: e.z,
+    scroll: { speed: e.scroll.speed, span: e.scroll.span || e.w, dir: e.scroll.dir },
+    anim: e.anim, animMs: e.animMs,
+    frames: e.frames > 1 ? e.frames : undefined, fps: e.frames > 1 ? (e.fps || 8) : undefined,
+    show: e.show,
+    hidden: e.hidden ? true : undefined, // 调试隐藏：导出保留最外层 hidden:true
+  }));
+  const cfg = { w: state.cw, h: state.ch, bg: $('gbg').value || '#000', fps: 12, elements: els };
+  return (
+    '/* 像素风小动画 · Pixel Scene Builder 生成（自包含，零依赖） */\n' +
+    '/* 目标网页放 <canvas id="scene-canvas"></canvas> 后粘贴本脚本 */\n' +
+    'const SCENE = ' + JSON.stringify(cfg) + ';\n' +
+    '(function () {\n' +
+    '  var cv = document.getElementById(\'scene-canvas\');\n' +
+    '  var ctx = cv.getContext(\'2d\');\n' +
+    '  cv.width = SCENE.w; cv.height = SCENE.h;\n' +
+    '  ctx.imageSmoothingEnabled = false;\n' +
+    '  var imgs = {};\n' +
+    '  SCENE.elements.forEach(function (e) { var i = new Image(); i.src = e.src; imgs[e.name] = i; });\n' +
+    '  var t = 0, last = 0, raf = 0;\n' +
+    '  function so(e) { if (!e.scroll || !e.scroll.speed) return 0; var sp = e.scroll.span || e.w || 1; var o = (t * e.scroll.speed) % sp; return e.scroll.dir === "right" ? o : -o; }\n' +
+    '  function al(e) { if (e.anim === "blink") { var on = Math.floor(t * 1000 / Math.max(50, e.animMs)) % 2 === 0; return e.alpha * (on ? 1 : 0.25); } return e.alpha; }\n' +
+    '  function sc(e) { if (e.anim === "pulse") return 1 + 0.15 * Math.sin(t * 1000 / Math.max(200, e.animMs) * Math.PI * 2); return 1; }\n' +
+    '  function shown(e) { if (!e.show) return true; if (e.show.scenes) { var s = Math.floor(t % SCENE.loop / (SCENE.loop / 4)); return e.show.scenes.indexOf(s) >= 0; } if (e.show.length === 2) { var lt = t % SCENE.loop; return lt >= (e.show[0] || 0) && lt < (e.show[1] == null ? SCENE.loop : e.show[1]); } return true; }\n' +
+    '  function draw() {\n' +
+    '    ctx.fillStyle = SCENE.bg; ctx.fillRect(0, 0, SCENE.w, SCENE.h);\n' +
+    '    var els = SCENE.elements.slice().sort(function (a, b) { return a.z - b.z; });\n' +
+    '    for (var i = 0; i < els.length; i++) {\n' +
+    '      var e = els[i], img = imgs[e.name];\n' +
+    '      if (!img || !img.width || !shown(e)) continue;\n' +
+    '      var s = sc(e), w = e.w * s, h = e.h * s, ox = so(e);\n' +
+    '      var frames = e.frames > 1 ? e.frames : 1;\n' +
+    '      var fx = frames > 1 ? Math.floor(t * (e.fps || 8)) % frames : 0;\n' +
+    '      var sw = frames > 1 ? Math.floor(img.width / frames) : img.width;\n' +
+    '      ctx.globalAlpha = al(e);\n' +
+    '      var blit = function (dx, dy) { ctx.drawImage(img, fx * sw, 0, sw, img.height, Math.round(dx), Math.round(dy), w, h); };\n' +
+    '      if (e.scroll && e.scroll.speed && e.scroll.span) {\n' +
+    '        var sp = e.scroll.span, dir = e.scroll.dir === "right" ? 1 : -1;\n' +
+    '        var n = Math.ceil(SCENE.w / sp) + 3;\n' +
+    '        for (var j = 0; j < n; j++) blit(e.x + j * sp * dir - ox * dir, e.y);\n' +
+    '      } else blit(e.x + ox, e.y);\n' +
+    '    }\n' +
+    '    ctx.globalAlpha = 1;\n' +
+    '  }\n' +
+    '  function tick(now) {\n' +
+    '    if (now - last >= 1000 / (SCENE.fps || 12)) { t += (now - last) / 1000; last = now; draw(); }\n' +
+    '    raf = requestAnimationFrame(tick);\n' +
+    '  }\n' +
+    '  draw();\n' +
+    '  last = performance.now();\n' +
+    '  raf = requestAnimationFrame(tick);\n' +
+    '})();\n'
+  );
+}
+
+/* ---------------- 打开 / 保存 js（页面内修改） ---------------- */
+let fileText = null, cfgStart = -1, cfgEnd = -1, fileName = 'scene.js';
+
+// 提取 js 中的对象字面量（平衡括号，支持嵌套；JS 对象字面量用求值解析）
+// 返回 {obj, start, end} 或 {err}（解析失败）或 null（未找到声明）
+function extractObj(text, name) {
+  const re = new RegExp('(?:const|let|var)\\s+' + name + '\\s*=\\s*(\\{)', 'm');
+  const m = re.exec(text);
+  if (!m) return null;
+  let i = m.index + m[0].indexOf('{');
+  const start = i;
+  let depth = 0;
+  for (; i < text.length; i++) {
+    if (text[i] === '{') depth++;
+    else if (text[i] === '}') { depth--; if (depth === 0) { i++; break; } }
+  }
+  const body = text.slice(start, i);
+  try {
+    const obj = new Function('return (' + body + ')')();
+    return { obj, start, end: i };
+  } catch (e) {
+    return { err: '解析 ' + name + ' 失败：' + e.message };
+  }
+}
+
+function loadAssembly(s) {
+  // 装配器 SCENE：关闭场景层（尺寸可能 ≠ 320），载入元素
+  state.sceneParamsMode = false;
+  $('showscene').checked = false;
+  state.showScene = false;
+  window.HOME_SCENE = null; // 装配模式：全局栏显示本 SCENE 自身的值
+  syncCanvasSize();
+  state.cw = s.obj.w || 320; state.ch = s.obj.h || 118;
+  $('gw').value = state.cw; $('gh').value = state.ch;
+  $('gbg').value = s.obj.bg || '#000';
+  state.elements = (s.obj.elements || []).map(e => ({
+    id: 'e' + Math.random().toString(36).slice(2, 7),
+    name: e.name, src: e.src, x: e.x || 0, y: e.y || 0,
+    w: e.w || 10, h: e.h || 10, alpha: e.alpha != null ? e.alpha : 1, z: e.z || 0,
+    scroll: { speed: (e.scroll && e.scroll.speed) || 0, span: (e.scroll && e.scroll.span) || e.w || 10, dir: (e.scroll && e.scroll.dir) || 'left' },
+    anim: e.anim || 'static', animMs: e.animMs || 700,
+  }));
+  state.selEl = null;
+  buildLayerList({ images: state.elements });
+  ensureAllImages();
+  syncGlobals();
+  resizeStageWrap(); // 显示框高度跟随装配 SCENE 宽高比
+  renderSceneBar();
+  renderStage();
+  renderTimeline();
+  $('m-stage').textContent = '已载入装配器 SCENE：' + state.elements.length + ' 个元素（' + state.cw + '×' + state.ch + '）——可直接拖拽/调参，再「保存 js」';
+}
+
+function loadSceneParams(hs, rawStart, rawEnd) {
+  // home-scene 风格配置：赋给 window.HOME_SCENE（场景层实时读），生成通用参数表单
+  $('showscene').checked = true;
+  state.showScene = true;
+  state.sceneParamsMode = true;
+  $('home-scene').style.display = 'block';
+  window.HOME_SCENE = hs.obj;
+  syncCanvasSize();
+  resizeStageWrap(); // 显示框高度跟随载入 js 的宽高比
+  if (window.HomeScene && HomeScene.resize) HomeScene.resize();
+  // 已有素材层（images）载入为元素（同一引用：修改即写回配置）
+  hs.obj.images = hs.obj.images || [];
+  state.elements = hs.obj.images.map(e => {
+    if (!e.id) e.id = 'e' + Math.random().toString(36).slice(2, 7);
+    e._img = null;
+    return e;
+  });
+  state.selEl = state.elements.length ? state.elements[0].id : null;
+  cfgStart = rawStart; cfgEnd = rawEnd;
+  migrateShow(hs.obj); // legacy show/hidden → 按场景窗口数组（旧格式自动迁移，编辑/保存用新模型）
+  buildLayerList(hs.obj);
+  syncGlobals();
+  renderSceneBar();
+  renderStage();
+  renderTimeline();
+  $('m-stage').textContent = '已载入场景配置（' + (hs.obj.w || '?') + '×' + (hs.obj.h || '?') + '，素材层 ' + state.elements.length + ' 项）——调整参数实时生效，点「保存 js」写回文件';
+  // 规范自检：提示可参数化性与结构问题（详见 SCENE_SPEC.md）
+  const warns = checkSceneSpec(hs.obj);
+  if (warns.length) {
+    $('m-props').textContent = '⚠ 规范自检 ' + warns.length + ' 项：\n- ' + warns.join('\n- ');
+    $('m-stage').textContent = '已载入场景配置（' + (hs.obj.w || '?') + '×' + (hs.obj.h || '?') + '，素材层 ' + state.elements.length + ' 项）⚠ 规范自检 ' + warns.length + ' 项';
+  }
+}
+
+/* ---------------- 规范自检（详见 SCENE_SPEC.md） ---------------- */
+function checkSceneSpec(cfg) {
+  const warns = [];
+  const n = cfg.scenes && cfg.scenes.length ? cfg.scenes.length : null;
+  for (const [key, el] of Object.entries(cfg)) {
+    if (!el || typeof el !== 'object' || Array.isArray(el) || key === 'images') continue;
+    for (const k of Object.keys(el)) {
+      // 1) 按场景散键：x3 / color3 等（存在基础键）
+      const m = /^(.*?)(\d+)$/.exec(k);
+      if (m && m[1] && Object.prototype.hasOwnProperty.call(el, m[1])) {
+        warns.push('「' + key + '.' + k + '」疑似按场景散键——建议合并为 ' + m[1] + ': [v0,v1,…] 按场景数组（参数轨道）');
+      }
+      // 2) 数值数组长度 ≠ 场景数：只读结构数据
+      const v = el[k];
+      if (Array.isArray(v) && v.length > 1 && v.every(x => typeof x === 'number') && n && v.length !== n) {
+        warns.push('「' + key + '.' + k + '」为数值数组（长度 ' + v.length + ' ≠ 场景数 ' + n + '）——仅展示不可编辑');
+      }
+    }
+  }
+  // 3) 用了 show:{scenes} 但未声明 scenes
+  if (n === null) {
+    let usedShow = false;
+    for (const [key, el] of Object.entries(cfg)) {
+      if (el && typeof el === 'object' && !Array.isArray(el) && el.show && Array.isArray(el.show.scenes)) usedShow = true;
+    }
+    if (usedShow) warns.push('使用了 show:{scenes:[..]} 但未声明 scenes 段名——分段语义按 4 段兜底，建议补充 scenes:["段名",…]');
+  }
+  return warns;
+}
+
+/* ---------------- 全局设置（场景文件区顶部：w/h/loop/bg） ---------------- */
+function syncGlobals() {
+  const cfg = window.HOME_SCENE;
+  const w = cfg ? cfg.w : state.cw, h = cfg ? cfg.h : state.ch;
+  const loop = cfg ? (cfg.loop || 48) : 48;
+  const bg = cfg ? (Array.isArray(cfg.bg) ? cfg.bg[0] : cfg.bg) : ($('gbg').value || '#000');
+  $('gw').value = w; $('gh').value = h; $('gloop').value = loop;
+  const nb = String(bg || '#000');
+  $('gbg').value = nb.length === 4 ? '#' + nb[1] + nb[1] + nb[2] + nb[2] + nb[3] + nb[3] : nb;
+}
+['gw', 'gh', 'gloop'].forEach(id => $(id).addEventListener('change', () => {
+  const v = Math.max(1, parseInt($(id).value) || 1);
+  if (window.HOME_SCENE) {
+    if (id === 'gw') { window.HOME_SCENE.w = v; state.cw = v; }
+    if (id === 'gh') { window.HOME_SCENE.h = v; state.ch = v; }
+    if (id === 'gloop') {
+      window.HOME_SCENE.loop = v;
+      if (window.HOME_SCENE.sceneBorders) window.HOME_SCENE.sceneBorders = window.HOME_SCENE.sceneBorders.map(b => Math.min(b, v));
+    }
+    syncCanvasSize();
+    // 画布尺寸跟随配置：home-scene 后备存储 = cfg.w×cfg.h，与 stage 对齐；显示框高度跟随比例
+    if (id === 'gw' || id === 'gh') {
+      resizeStageWrap();
+      if (window.HomeScene && HomeScene.resize) HomeScene.resize();
+    }
+  } else {
+    if (id === 'gw') state.cw = v;
+    if (id === 'gh') state.ch = v;
+    resizeStageWrap();
+  }
+  renderStage();
+  renderTimeline();
+}));
+$('gbg').addEventListener('change', () => {
+  if (window.HOME_SCENE) {
+    if (Array.isArray(window.HOME_SCENE.bg)) window.HOME_SCENE.bg[0] = $('gbg').value;
+    else window.HOME_SCENE.bg = $('gbg').value;
+  }
+  renderStage();
+});
+
+/* ---------------- PS 式图层列表（元素卡片栏：收起/展开/拖拽排序写 z） ---------------- */
+const PROG_SKIP = ['w', 'h', 'loop', 'bg', 'images'];
+let layerOpen = {};
+let tlCurScene = -1;   // 图层栏当前编辑场景（播放头所在段；-1=无 scenes）
+const rowS = {};       // 参数行 [s] 开关：key = cardKey|path（开=改动只写当前场景槽）
+const normColor = c => (c && c.length === 4 ? '#' + c[1] + c[1] + c[2] + c[2] + c[3] + c[3] : c);
+const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// 通用参数行生成（递归；容器可指定）。
+// 参数轨道呈现：每行只显示「当前场景」的一个值；右侧小 [s] 开关——
+// 默认关（改动写常量，作用于所有场景）⇄ 点击开（改动只写当前场景槽，自动生成按场景数组）。
+function walkForm(obj, path, box, cardKey) {
+  const sc = sceneNames();
+  const curS = tlCurScene;
+  const add = (label, el, extra) => {
+    const w = document.createElement('div');
+    w.className = 'cf-row';
+    const l = document.createElement('label');
+    l.textContent = label;
+    w.appendChild(l);
+    w.appendChild(el);
+    if (extra) w.appendChild(extra);
+    box.appendChild(w);
+  };
+  const rebuild = () => buildLayerList(layerCfg());
+  const rk = k => cardKey + '|' + path + k;
+  const sBtn = k => {
+    if (curS < 0) return null;
+    const on = !!rowS[rk(k)];
+    const b = document.createElement('button');
+    b.className = 'hb sbtn' + (on ? ' on' : '');
+    b.textContent = 's';
+    b.title = on ? '单场景编辑：改动只作用于「' + (sc[curS] || curS) + '」' : '关闭=改动作用于所有场景（按场景数组将折叠为常量）；点击开启=只改当前场景';
+    b.addEventListener('click', () => { rowS[rk(k)] = !rowS[rk(k)]; rebuild(); });
+    return b;
+  };
+  const idx = () => Math.min(curS < 0 ? 0 : curS, 31);
+  for (const [k, v] of Object.entries(obj)) {
+    if (k === 'show') continue; // 显示时间由卡片头 [S] 弹窗管理
+    const isNumArr = Array.isArray(v) && v.length && v.every(x => typeof x === 'number');
+    if (typeof v === 'number' || isNumArr) {
+      // 导入即按场景数组的参数：默认激活 [s]（只改当前场景槽，不破坏数组）
+      if (isNumArr && curS >= 0 && !(rk(k) in rowS)) rowS[rk(k)] = true;
+      const curVal = isNumArr ? v[Math.min(idx(), v.length - 1)] : v;
+      const inp = document.createElement('input'); inp.type = 'number'; inp.value = curVal;
+      inp.addEventListener('change', () => {
+        const nv = parseFloat(inp.value);
+        if (isNaN(nv)) return;
+        if (curS >= 0 && rowS[rk(k)]) {
+          if (!isNumArr) obj[k] = sc.map(() => curVal);
+          obj[k][Math.min(curS, obj[k].length - 1)] = nv;
+        } else {
+          obj[k] = nv;
+        }
+        refreshStage();
+      });
+      add(path + k, inp, sBtn(k));
+    } else if (typeof v === 'string' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)) {
+      const inp = document.createElement('input'); inp.type = 'color'; inp.value = normColor(v);
+      inp.addEventListener('change', () => { obj[k] = inp.value; refreshStage(); });
+      add(path + k, inp, sBtn(k));
+    } else if (Array.isArray(v) && v.length && v.every(x => typeof x === 'string' && /^#/.test(x))) {
+      // 按场景颜色数组：显示当前场景色，默认激活 [s]
+      if (curS >= 0 && !(rk(k) in rowS)) rowS[rk(k)] = true;
+      const curVal = v[Math.min(idx(), v.length - 1)];
+      const inp = document.createElement('input'); inp.type = 'color'; inp.value = normColor(curVal);
+      inp.addEventListener('change', () => {
+        if (curS >= 0 && rowS[rk(k)]) v[Math.min(curS, v.length - 1)] = inp.value;
+        else obj[k] = inp.value;
+        refreshStage();
+      });
+      add(path + k, inp, sBtn(k));
+    } else if (typeof v === 'string') {
+      const inp = document.createElement('input'); inp.type = 'text'; inp.value = v;
+      inp.addEventListener('change', () => { obj[k] = inp.value; refreshStage(); });
+      add(path + k, inp, sBtn(k));
+    } else if (typeof v === 'boolean') {
+      const inp = document.createElement('input'); inp.type = 'checkbox'; inp.checked = v;
+      inp.addEventListener('change', () => { obj[k] = inp.checked; refreshStage(); });
+      add(path + k, inp);
+    } else if (Array.isArray(v)) {
+      const d = document.createElement('div'); d.className = 'cf-ro';
+      const s = JSON.stringify(v);
+      d.textContent = s.length > 90 ? s.slice(0, 90) + '…' : s;
+      d.title = '（数组：结构数据，仅展示）';
+      add(path + k, d);
+    } else if (v && typeof v === 'object') {
+      const h = document.createElement('div'); h.className = 'cf-group'; h.textContent = path + k;
+      box.appendChild(h);
+      walkForm(v, path + k + '.', box, cardKey);
+    }
+  }
+}
+function getPath(o, p) { return p.split('.').reduce((a, k) => (a == null ? undefined : a[k]), o); }
+function setPath(o, p, v) { const ks = p.split('.'); let a = o; for (let i = 0; i < ks.length - 1; i++) a = a[ks[i]] = a[ks[i]] || {}; a[ks[ks.length - 1]] = v; }
+/* 素材卡片专用表单：中文说明（滚动/动画/多帧），单值显示 + [s] 单场景编辑；显示时间走卡片头 [S] 弹窗 */
+function imgForm(el, box, cardKey) {
+  const sc = sceneNames();
+  const curS = tlCurScene;
+  const add = (label, ctrl, hint, extra) => {
+    const w = document.createElement('div');
+    w.className = 'cf-row';
+    const l = document.createElement('label');
+    l.textContent = label;
+    if (hint) l.title = hint;
+    w.appendChild(l);
+    w.appendChild(ctrl);
+    if (extra) w.appendChild(extra);
+    box.appendChild(w);
+  };
+  const num = (label, key, step, min, hint) => {
+    const raw = getPath(el, key);
+    const isArr = Array.isArray(raw);
+    const rkey = cardKey + '|' + key;
+    if (isArr && curS >= 0 && !(rkey in rowS)) rowS[rkey] = true; // 按场景数组：默认激活 [s]
+    const curVal = isArr ? raw[Math.min(curS < 0 ? 0 : curS, raw.length - 1)] : (raw != null ? raw : '');
+    const on = curS >= 0 && !!rowS[rkey];
+    const inp = document.createElement('input'); inp.type = 'number';
+    inp.value = curVal;
+    if (step) inp.step = step;
+    if (min != null) inp.min = min;
+    inp.addEventListener('change', () => {
+      const v = parseFloat(inp.value);
+      if (isNaN(v)) return;
+      if (curS >= 0 && rowS[rkey]) {
+        if (!isArr) setPath(el, key, sc.map(() => curVal));
+        getPath(el, key)[Math.min(curS, getPath(el, key).length - 1)] = v;
+      } else {
+        setPath(el, key, v);
+      }
+      refreshStage();
+    });
+    let extra = null;
+    if (curS >= 0) {
+      extra = document.createElement('button');
+      extra.className = 'hb sbtn' + (on ? ' on' : '');
+      extra.textContent = 's';
+      extra.title = on ? '单场景编辑：改动只作用于「' + (sc[curS] || curS) + '」' : '关闭=改动作用于所有场景（按场景数组将折叠为常量）；点击开启=只改当前场景';
+      extra.addEventListener('click', () => { rowS[rkey] = !rowS[rkey]; buildLayerList(layerCfg()); });
+    }
+    add(label, inp, hint, extra);
+  };
+  const txt = (label, key, hint, ph) => {
+    const inp = document.createElement('input'); inp.type = 'text';
+    inp.value = getPath(el, key) || '';
+    if (ph) inp.placeholder = ph;
+    inp.addEventListener('change', () => { setPath(el, key, inp.value); refreshStage(); });
+    add(label, inp, hint);
+  };
+  const pick = (label, key, opts, hint) => {
+    const s = document.createElement('select');
+    for (const [v, t] of opts) {
+      const o = document.createElement('option'); o.value = v; o.textContent = t;
+      if (String(getPath(el, key)) === String(v)) o.selected = true;
+      s.appendChild(o);
+    }
+    s.addEventListener('change', () => { setPath(el, key, s.value); refreshStage(); });
+    add(label, s, hint);
+  };
+  txt('名称', 'name');
+  num('x', 'x'); num('y', 'y');
+  num('宽', 'w', 1, 1); num('高', 'h', 1, 1);
+  num('透明度', 'alpha', 0.05, 0, '1=完全不透明');
+  num('层级 z', 'z', 1, 0, '越大越靠上');
+  num('滚动速度', 'scroll.speed', 1, null, '像素/秒，0=静止');
+  num('平铺周期', 'scroll.span', 1, 1, '滚动无缝平铺的跨度（默认=元素宽）');
+  pick('滚动方向', 'scroll.dir', [['left', '向左'], ['right', '向右']]);
+  pick('动画类型', 'anim', [['static', '静态'], ['blink', '闪烁'], ['pulse', '脉动']], '闪烁=透明度明暗交替；脉动=大小缩放');
+  num('动画周期', 'animMs', 50, 50, '毫秒（闪烁/脉动的节拍）');
+  num('帧数', 'frames', 1, 1, '多帧 sprite sheet（帧表横向裁切），1=单帧');
+  num('帧率', 'fps', 1, 1, '多帧每秒播放帧数');
+}
+function layerOrderOf(cfg) {
+  const progKeys = Object.keys(cfg).filter(k => PROG_SKIP.indexOf(k) < 0 && cfg[k] && typeof cfg[k] === 'object' && !Array.isArray(cfg[k]));
+  const imgs = cfg.images || [];
+  return progKeys.map(k => ({ kind: 'prog', key: k })).concat(imgs.map((e, i) => ({ kind: 'img', idx: i })));
+}
+function layerCfg() {
+  // 图层栏的配置源：场景参数模式读 HOME_SCENE（程序元素+素材）；装配模式素材即元素
+  return (state.sceneParamsMode && window.HOME_SCENE) ? window.HOME_SCENE : { images: state.elements };
+}
+function buildLayerList(cfg) {
+  const box = $('cfgform');
+  box.innerHTML = '';
+  tlCurScene = tlScene(); // 图层栏跟随时间轴：显示当前场景值
+  const order = layerOrderOf(cfg);
+  const imgs = cfg.images || [];
+  for (const item of order) {
+    const el = item.kind === 'prog' ? cfg[item.key] : imgs[item.idx];
+    if (!el) continue;
+    const nm = item.kind === 'prog' ? item.key : (el.name || 'img' + item.idx);
+    const z = el.z != null ? el.z : (item.kind === 'img' ? 99 : '');
+    const selId = state.selEl;
+    const isSel = item.kind === 'img' && el.id && el.id === selId;
+    const open = item.kind === 'prog' ? !!layerOpen[nm] : isSel;
+    const isHid = !!el.hidden;
+    const cardKey = item.kind === 'prog' ? 'p:' + item.key : 'i:' + el.id;
+    const card = document.createElement('div');
+    card.className = 'layer-card' + (item.kind === 'img' ? ' img' : '') + (isSel ? ' sel' : '') + (isHid ? ' hid' : '');
+    card.draggable = true;
+    if (item.kind === 'img') card.dataset.elid = el.id;
+    else card.dataset.key = item.key;
+    const head = document.createElement('div');
+    head.className = 'layer-head';
+    const zTxt = item.kind === 'img' ? (el.frames > 1 ? '帧' + el.frames + '·z' + z : 'z' + z) : 'z' + z;
+    head.innerHTML = '<span class="lgrip">⠿</span><span class="layer-z">' + zTxt + '</span>' +
+      '<span class="lcarr">' + (open ? '▾' : '▸') + '</span>' +
+      '<span class="layer-name">' + escapeHtml(nm) + '</span>' +
+      '<button class="hb" data-act="show" title="显示时间（每场景显隐 + 场景内窗口）">S</button>' +
+      '<button class="hb' + (isHid ? ' hid' : '') + '" data-act="hide" title="' + (isHid ? '显示该元素' : '调试隐藏（独立于场景可见性，保存为 hidden:true）') + '">' + (isHid ? '显示' : '隐藏') + '</button>' +
+      '<button class="hb" data-act="del" title="删除该元素">删除</button>';
+    card.appendChild(head);
+    if (open) {
+      const body = document.createElement('div');
+      body.className = 'layer-body';
+      if (item.kind === 'img') imgForm(el, body, cardKey); // 素材卡片：中文说明表单（滚动/动画/多帧）
+      else walkForm(el, '', body, cardKey);                // 程序元素：通用参数表单
+      if (item.kind === 'img') {
+        const ops = document.createElement('div');
+        ops.className = 'cf-row';
+        const bp = document.createElement('button'); bp.className = 'small'; bp.textContent = '复制';
+        bp.addEventListener('click', () => { dupElement(el); });
+        ops.appendChild(bp);
+        body.appendChild(ops);
+      }
+      card.appendChild(body);
+    }
+    head.addEventListener('click', ev => {
+      ev.stopPropagation();
+      const btn = ev.target.closest ? ev.target.closest('[data-act]') : null;
+      if (btn) {
+        if (btn.dataset.act === 'show') toggleShowPopup(el, cfg, btn);
+        else if (btn.dataset.act === 'hide') toggleHidden(el, cfg);
+        else if (btn.dataset.act === 'del') {
+          if (item.kind === 'prog') delProgElement(cfg, item.key);
+          else delElement(el);
+        }
+        return;
+      }
+      if (item.kind === 'prog') {
+        layerOpen[nm] = !layerOpen[nm];
+        buildLayerList(cfg);
+      } else {
+        state.selEl = isSel ? null : el.id; // 点击卡片 = 选中/取消（展开参数）
+        buildLayerList(cfg);
+        renderStage();
+      }
+    });
+    card.addEventListener('dragstart', ev => {
+      ev.dataTransfer.setData('text/plain', item.kind + ':' + (item.kind === 'prog' ? item.key : item.idx));
+      card.classList.add('drag');
+    });
+    card.addEventListener('dragover', ev => { ev.preventDefault(); });
+    card.addEventListener('drop', ev => {
+      ev.preventDefault();
+      const data = ev.dataTransfer.getData('text/plain');
+      if (!data) return;
+      const [kind, key] = data.split(':');
+      reorderLayers(cfg, kind, key, item);
+    });
+    card.addEventListener('dragend', () => card.classList.remove('drag'));
+    box.appendChild(card);
+  }
+  if (!order.length) {
+    const d = document.createElement('div');
+    d.className = 'cf-ro';
+    d.textContent = '（空——打开场景 js 或添加素材）';
+    box.appendChild(d);
+  }
+}
+function toggleHidden(el, cfg) {
+  // 独立于场景可见性的「调试隐藏」：只切换 el.hidden（全局覆盖，不影响 show 窗口）；
+  // 保存时仍为隐藏状态则写最外层 hidden:true。
+  el.hidden = !el.hidden;
+  buildLayerList(cfg);
+  refreshStage();
+}
+
+/* ---------------- 显示时间弹窗（卡片头 [S]：逐场景显隐；场景内窗口 bar 为下一阶段） ---------------- */
+let showPop = null;
+let showFocusEl = null; // 最近打开的 [S] 面板元素：时间轴只映射它（避免跨面板混显）
+// show 窗口归一：show[i] = null（隐藏）| [f0,f1]（单窗口）| [[f0,f1],…]（多窗口）→ 统一为 null | [[f0,f1],…]
+function normShowWindows(show, n) {
+  const w = Array(n).fill(null);
+  if (show && Array.isArray(show) && show.length && (show[0] === null || Array.isArray(show[0]))) {
+    for (let i = 0; i < Math.min(n, show.length); i++) {
+      const wi = show[i];
+      if (!wi) continue;
+      w[i] = (Array.isArray(wi[0]) ? wi : [wi]).map(seg => [seg[0], seg[1]]);
+    }
+  } else {
+    for (let i = 0; i < n; i++) w[i] = [[0, 1]]; // 无 show = 全程显示（每场景独立数组，勿共享引用）
+  }
+  return w;
+}
+function windowsAllFull(w) {
+  return w.every(x => x && x.length === 1 && x[0][0] === 0 && x[0][1] === 1);
+}
+function toggleShowPopup(el, cfg, anchorBtn) {
+  if (showPop && showPop._el === el) { showPop.remove(); showPop = null; return; }
+  if (showPop) showPop.remove();
+  showFocusEl = el; // 时间轴只映射当前/最近打开的 [S] 面板
+  const n = (cfg.scenes && cfg.scenes.length) || 4;
+  const pop = document.createElement('div');
+  pop.className = 'show-pop';
+  pop._el = el;
+  const title = document.createElement('div');
+  title.className = 'show-pop-title';
+  title.textContent = '显示时间：行=场景开关（亮=显示/暗=隐藏）· 条=场景内窗口（PS 渐变条式）';
+  pop.appendChild(title);
+  const commit = () => {
+    const w2 = normShowWindows(el.show, n);
+    if (windowsAllFull(w2)) delete el.show; else el.show = w2;
+    buildLayerList(cfg);
+    refreshStage();
+  };
+  // 场景内窗口条（仿 PS 渐变条）：点击段=切分、点击空白=加段(10% 居中)、拖段体=移动、拖两端=缩放、双击段=删除
+  const buildBar = (i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'win-wrap';
+    const bar = document.createElement('div');
+    bar.className = 'win-bar';
+    const winsRef = () => normShowWindows(el.show, n)[i];
+    const write = wins => {
+      const w2 = normShowWindows(el.show, n);
+      w2[i] = wins && wins.length ? wins.map(seg => [seg[0], seg[1]]).sort((a, b) => a[0] - b[0]) : null;
+      if (windowsAllFull(w2)) delete el.show; else el.show = w2;
+      buildLayerList(cfg);
+      refreshStage();
+      draw();
+    };
+    const draw = () => {
+      const wins = winsRef();
+      bar.innerHTML = '';
+      if (!wins) return;
+      wins.forEach((seg, si) => {
+        const d = document.createElement('div');
+        d.className = 'win-seg';
+        d.dataset.seg = si;
+        d.style.left = (seg[0] * 100) + '%';
+        d.style.width = Math.max(0.5, (seg[1] - seg[0]) * 100) + '%';
+        const hl = document.createElement('i'); hl.className = 'win-hl';
+        const hr = document.createElement('i'); hr.className = 'win-hr';
+        d.appendChild(hl); d.appendChild(hr);
+        bar.appendChild(d);
+      });
+    };
+    let drag = null;
+    let clickPos = null;
+    let clickTimer = null;
+    const doClick = fx => {
+      const wins = winsRef() || [];
+      const segAt = wins.findIndex(sg => fx >= sg[0] - 0.001 && fx <= sg[1] + 0.001);
+      if (segAt >= 0) {
+        // 点击段内 → 切分为两段（如 [0,1] 在 0.25 处切 → [0,0.25] + [0.25,1]）
+        const seg = wins[segAt];
+        if (fx - seg[0] < 0.02 || seg[1] - fx < 0.02) return;
+        const tail = seg[1];
+        seg[1] = fx;
+        wins.splice(segAt + 1, 0, [fx, tail]);
+      } else {
+        // 空白 → 加段（宽 10% 居中）
+        const half = 0.05;
+        wins.push([Math.max(0, fx - half), Math.min(1, fx + half)]);
+      }
+      write(wins);
+    };
+    bar.addEventListener('pointerdown', ev => {
+      ev.stopPropagation();
+      const r = bar.getBoundingClientRect();
+      const fx = Math.max(0, Math.min(1, (ev.clientX - r.left) / Math.max(1, r.width)));
+      const segEl = ev.target.closest ? ev.target.closest('.win-seg') : null;
+      const wins = winsRef() || [];
+      if (segEl) {
+        const si = +segEl.dataset.seg;
+        const seg = wins[si];
+        const sr = segEl.getBoundingClientRect();
+        const inL = ev.clientX - sr.left < 7;
+        const inR = sr.right - ev.clientX < 7;
+        if (inL || inR) drag = { type: 'resize', si, side: inL ? 'l' : 'r' };
+        else drag = { type: 'move', si, dx: fx - seg[0] };
+        clickPos = null;
+        return;
+      }
+      drag = null;
+      clickPos = { fx };
+    });
+    bar.addEventListener('pointermove', ev => {
+      if (!drag) return;
+      ev.stopPropagation();
+      const r = bar.getBoundingClientRect();
+      const fx = Math.max(0, Math.min(1, (ev.clientX - r.left) / Math.max(1, r.width)));
+      const wins = winsRef() || [];
+      const seg = wins[drag.si];
+      if (!seg) return;
+      const prevEnd = drag.si > 0 ? wins[drag.si - 1][1] : 0;
+      const nextStart = drag.si < wins.length - 1 ? wins[drag.si + 1][0] : 1;
+      if (drag.type === 'move') {
+        const w = seg[1] - seg[0];
+        seg[0] = Math.max(prevEnd, Math.min(nextStart - w, fx - drag.dx));
+        seg[1] = seg[0] + w;
+      } else if (drag.type === 'resize') {
+        if (drag.side === 'l') seg[0] = Math.max(prevEnd, Math.min(seg[1] - 0.02, fx));
+        else seg[1] = Math.max(seg[0] + 0.02, Math.min(nextStart, fx));
+      }
+      write(wins);
+    });
+    const up = () => {
+      if (drag) { drag = null; return; }
+      if (clickPos) {
+        const fx = clickPos.fx;
+        clickPos = null;
+        if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; return; } // 双击第二击：取消切分
+        clickTimer = setTimeout(() => { clickTimer = null; doClick(fx); }, 220);
+      }
+    };
+    bar.addEventListener('pointerup', up);
+    bar.addEventListener('pointerleave', () => { drag = null; clickPos = null; });
+    bar.addEventListener('dblclick', ev => {
+      ev.stopPropagation();
+      const segEl = ev.target.closest ? ev.target.closest('.win-seg') : null;
+      if (!segEl) return;
+      if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+      const wins = winsRef() || [];
+      wins.splice(+segEl.dataset.seg, 1);
+      write(wins);
+    });
+    wrap.appendChild(bar);
+    return wrap;
+  };
+  const refresh = () => {
+    pop.innerHTML = '';
+    pop.appendChild(title);
+    const wins = normShowWindows(el.show, n);
+    for (let i = 0; i < n; i++) {
+      const rowWrap = document.createElement('div');
+      rowWrap.className = 'show-row-wrap';
+      const row = document.createElement('button');
+      row.className = 'show-row' + (wins[i] ? ' on' : '');
+      row.innerHTML = '<span class="idx">' + i + '</span><span class="nm">' + escapeHtml((cfg.scenes && cfg.scenes[i]) || ('场景' + i)) + '</span>' +
+        (wins[i] ? '<span class="cnt">' + wins[i].length + '段</span>' : '');
+      row.addEventListener('click', ev => {
+        ev.stopPropagation();
+        const w2 = normShowWindows(el.show, n);
+        w2[i] = w2[i] ? null : [[0, 1]];
+        if (windowsAllFull(w2)) delete el.show; else el.show = w2;
+        buildLayerList(cfg);
+        refreshStage();
+        refresh();
+      });
+      rowWrap.appendChild(row);
+      if (wins[i]) rowWrap.appendChild(buildBar(i));
+      pop.appendChild(rowWrap);
+    }
+  };
+  refresh();
+  const r = anchorBtn.getBoundingClientRect();
+  pop.style.position = 'fixed';
+  pop.style.left = Math.max(4, Math.min(window.innerWidth - 200, r.left)) + 'px';
+  pop.style.top = (r.bottom + 4) + 'px';
+  document.body.appendChild(pop);
+  showPop = pop;
+  const close = ev => { if (!pop.contains(ev.target)) { pop.remove(); showPop = null; document.removeEventListener('pointerdown', close, true); } };
+  document.addEventListener('pointerdown', close, true);
+}
+
+/* ---------------- 旧格式迁移：show 归一为按场景窗口数组；hidden 保留为独立调试隐藏 ---------------- */
+function migrateShow(cfg) {
+  const n = (cfg.scenes && cfg.scenes.length) || 4;
+  const fix = e => {
+    if (!e || typeof e !== 'object') return;
+    // hidden 保留（独立维度，导出写 hidden:true）；仅迁移 show 格式
+    if (e.show === undefined || e.show === null) return;
+    const s = e.show;
+    if (Array.isArray(s) && s.length && (s[0] === null || Array.isArray(s[0]))) return; // 已是窗口数组
+    const windows = Array(n).fill(null);
+    if (s && Array.isArray(s.scenes)) {
+      s.scenes.forEach(i => { if (i >= 0 && i < n) windows[i] = [[0, 1]]; });
+    } else if (Array.isArray(s) && s.length === 2 && typeof s[0] === 'number') {
+      const a = s[0] || 0;
+      const b = s[1] == null ? (cfg.loop || 48) : s[1];
+      for (let i = 0; i < n; i++) {
+        const [s0, s1] = tlSceneRange(i);
+        const ov = Math.min(b, s1) - Math.max(a, s0);
+        if (ov > 0) windows[i] = [[
+          Math.max(0, (Math.max(a, s0) - s0) / (s1 - s0)),
+          Math.min(1, (Math.min(b, s1) - s0) / (s1 - s0)),
+        ]];
+      }
+    }
+    const allFull = windows.every(w => w && w.length === 1 && w[0][0] === 0 && w[0][1] === 1);
+    if (allFull) delete e.show; else e.show = windows;
+  };
+  for (const k of Object.keys(cfg)) {
+    const v = cfg[k];
+    if (v && typeof v === 'object' && !Array.isArray(v)) fix(v);
+  }
+  (cfg.images || []).forEach(fix);
+}
+function delProgElement(cfg, key) {
+  if (!window.confirm('删除场景元素「' + key + '」？保存后场景将不再绘制它。')) return;
+  delete cfg[key];
+  delete layerOpen[key];
+  buildLayerList(cfg);
+  renderStage();
+}
+function focusLayerCard(elId) {
+  const card = $('cfgform').querySelector('[data-elid="' + elId + '"]');
+  if (card && card.scrollIntoView) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+function delElement(e) {
+  state.elements = state.elements.filter(x => x.id !== e.id);
+  if (state.sceneParamsMode && window.HOME_SCENE) {
+    window.HOME_SCENE.images = (window.HOME_SCENE.images || []).filter(x => x !== e);
+  }
+  state.selEl = null;
+  buildLayerList(layerCfg());
+  renderStage();
+}
+function dupElement(e) {
+  const n = Object.assign({}, e, { id: 'e' + Math.random().toString(36).slice(2, 7), x: e.x + 8, y: e.y + 8, _img: null });
+  state.elements.push(n);
+  if (state.sceneParamsMode && window.HOME_SCENE) {
+    (window.HOME_SCENE.images = window.HOME_SCENE.images || []).push(n);
+  }
+  state.selEl = n.id;
+  buildLayerList(layerCfg());
+  ensureImage(n);
+  renderStage();
+}
+function reorderLayers(cfg, srcKind, srcKey, dstItem) {
+  const order = layerOrderOf(cfg);
+  const srcIdx = order.findIndex(x => x.kind === srcKind && String(x.kind === 'prog' ? x.key : x.idx) === String(srcKey));
+  const dstIdx = order.findIndex(x => x.kind === dstItem.kind && (dstItem.kind === 'prog' ? x.key === dstItem.key : x.idx === dstItem.idx));
+  if (srcIdx < 0 || dstIdx < 0) return;
+  const [it] = order.splice(srcIdx, 1);
+  order.splice(dstIdx, 0, it);
+  const imgs = cfg.images || [];
+  // 1) z 重排（0..N-1，程序元素与素材统一）
+  order.forEach((o, z) => {
+    if (o.kind === 'prog') cfg[o.key].z = z;
+    else imgs[o.idx].z = z;
+  });
+  // 2) 物理重排卡片顺序（跟随 z）：程序元素按键顺序 in-place 重插（保持 cfg 对象引用），
+  //    素材按新序 splice 原数组（保持数组引用，装配模式 state.elements 同数组随之更新）
+  const progOrder = order.filter(o => o.kind === 'prog').map(o => o.key);
+  const rest = Object.keys(cfg).filter(k => progOrder.indexOf(k) < 0);
+  for (const k of progOrder.concat(rest)) { const v = cfg[k]; delete cfg[k]; cfg[k] = v; }
+  const newImgs = order.filter(o => o.kind === 'img').map(o => imgs[o.idx]);
+  imgs.splice(0, imgs.length, ...newImgs);
+  buildLayerList(cfg);
+  renderStage();
+}
+
+// 保存：File System Access API（localhost/https）优先，失败/不支持则下载
+async function saveToFile(filename, content) {
+  try {
+    if (window.showSaveFilePicker) {
+      const h = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description: 'JavaScript', accept: { 'text/javascript': ['.js'] } }],
+      });
+      const w = await h.createWritable();
+      await w.write(content);
+      await w.close();
+      $('m-props').textContent = '已写回文件：' + h.name;
+      return;
+    }
+  } catch (e) { /* 用户取消或环境不支持 */ }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], { type: 'text/javascript' }));
+  a.download = filename;
+  a.click();
+  $('m-props').textContent = '当前环境不支持直接写文件，已触发下载：' + filename;
+}
+
+$('btn-open').addEventListener('click', () => $('jsfile').click());
+$('jsfile').addEventListener('change', () => {
+  const f = $('jsfile').files[0];
+  if (!f) return;
+  f.text().then(t => {
+    fileName = f.name;
+    loadJs(t);
+  });
+});
+function loadJs(text) {
+  fileText = text;
+  const s = extractObj(text, 'SCENE');
+  if (s && s.obj && Array.isArray(s.obj.elements)) { loadAssembly(s); return; }
+  if (s && s.err) { $('m-props').textContent = s.err; return; }
+  const hs = extractObj(text, 'HOME_SCENE') || extractObj(text, 'DEFAULT_HOME_SCENE') || extractObj(text, 'HOME_SCENE_DEFAULT');
+  if (hs && hs.obj) { loadSceneParams(hs, hs.start, hs.end); return; }
+  if (hs && hs.err) { $('m-props').textContent = hs.err; return; }
+  $('m-props').textContent = '未找到 SCENE 或 HOME_SCENE 配置——请打开本工具导出的 js 或参数化场景 js';
+}
+$('btn-save').addEventListener('click', () => {
+  if (window.HOME_SCENE && cfgStart >= 0 && fileText) {
+    // 场景参数模式：序列化 window.HOME_SCENE（剥掉内部 _img）写回原文件的配置段
+    const json = JSON.stringify(window.HOME_SCENE, (k, v) => (k === '_img' ? undefined : v), 2);
+    const newText = fileText.slice(0, cfgStart) + json + fileText.slice(cfgEnd);
+    // 保存前自检：写回后的文件必须能被重新提取解析（防写坏文件导致下次导入失败）
+    const check = extractObj(newText, 'SCENE') || extractObj(newText, 'HOME_SCENE') || extractObj(newText, 'DEFAULT_HOME_SCENE');
+    if (!check || !check.obj) {
+      $('m-props').textContent = '保存自检失败：写回结果无法重新解析（' + (check && check.err ? check.err : '未找到配置') + '），未写文件';
+      return;
+    }
+    saveToFile(fileName || 'home-scene.js', newText);
+  } else if (state.elements.length) {
+    // 装配模式：保存完整导出物
+    saveToFile((fileName && fileName !== 'scene.js' ? fileName : 'scene.js'), buildExportText());
+  } else {
+    $('m-props').textContent = '没有可保存的内容（先打开或装配场景）';
+  }
+});
+
+/* ---------------- 时间轴（通用轨道 + 可选 SCENE 划分 + 素材显示时段） ---------------- */
+let tlDragging = false;
+function tlLoop() { return (window.HOME_SCENE && window.HOME_SCENE.loop) || 48; }
+function tlScenes() {
+  // SCENE 划分：打开含 scenes:["段名",...] 的 js 时显示段分隔与段名；否则通用轨道
+  const cfg = window.HOME_SCENE;
+  return cfg && Array.isArray(cfg.scenes) && cfg.scenes.length ? cfg.scenes : null;
+}
+function tlSeg() {
+  // show:{scenes:[..]} 的语义：每段时长 = loop / 段数（无 scenes 声明时按通用 4 段兜底）
+  const s = tlScenes();
+  return s ? tlLoop() / s.length : tlLoop() / 4;
+}
+function sceneNames() { const s = tlScenes(); return s || []; }
+function currentBorders(cfg) {
+  // 场景边界（秒）：有 sceneBorders 用之，否则按 scenes 数等分
+  const loop = cfg.loop || tlLoop();
+  const n = (cfg.scenes && cfg.scenes.length) || 4;
+  if (cfg.sceneBorders && cfg.sceneBorders.length === n - 1) return cfg.sceneBorders;
+  const out = [];
+  for (let i = 1; i < n; i++) out.push(loop * i / n);
+  return out;
+}
+function equalBorders(cfg, n) {
+  const loop = cfg.loop || tlLoop();
+  const out = [];
+  for (let i = 1; i < n; i++) out.push(loop * i / n);
+  return out;
+}
+// 当前场景（播放头所在段；无 scenes 返回 -1）
+function tlScene() {
+  const cfg = window.HOME_SCENE;
+  if (!cfg || !state.sceneParamsMode || !(cfg.scenes && cfg.scenes.length)) return -1;
+  const loop = cfg.loop || 48;
+  const lt = ((state.t % loop) + loop) % loop;
+  const b = cfg.sceneBorders && cfg.sceneBorders.length ? cfg.sceneBorders : null;
+  const n = cfg.scenes.length;
+  if (b) { for (let i = 0; i < b.length; i++) if (lt < b[i]) return i; return b.length; }
+  return Math.floor(lt / (loop / n));
+}
+function tlSceneRange(part) {
+  const cfg = window.HOME_SCENE;
+  const loop = cfg.loop || 48;
+  const n = (cfg.scenes && cfg.scenes.length) || 4;
+  const b = cfg.sceneBorders && cfg.sceneBorders.length ? cfg.sceneBorders : null;
+  if (b) return [part === 0 ? 0 : b[part - 1], part === b.length ? loop : b[part]];
+  return [part * loop / n, (part + 1) * loop / n];
+}
+// 显示时间 → 时间轴色块区间数组：窗口模型（每场景可多段）或 legacy（单段）
+function showRanges(e, loop) {
+  if (!e || !e.show) return null;
+  if (Array.isArray(e.show) && e.show.length && (e.show[0] === null || Array.isArray(e.show[0]))) {
+    const out = [];
+    for (let i = 0; i < e.show.length; i++) {
+      const w = e.show[i];
+      if (!w) continue;
+      const wins = Array.isArray(w[0]) ? w : [w];
+      const [s0, s1] = tlSceneRange(i);
+      wins.forEach(seg => out.push([s0 + seg[0] * (s1 - s0), s0 + seg[1] * (s1 - s0)]));
+    }
+    return out.length ? out : null;
+  }
+  const r = legacyShowRange(e, loop);
+  return r ? [r] : null;
+}
+function legacyShowRange(e, loop) {
+  if (!e || !e.show) return null;
+  if (e.show && Array.isArray(e.show.scenes)) {
+    const cfg = window.HOME_SCENE;
+    const n = (cfg && cfg.scenes && cfg.scenes.length) || 4;
+    const borders = cfg && cfg.scenes && cfg.scenes.length ? currentBorders(cfg) : null;
+    const segStart = i => borders ? (i === 0 ? 0 : borders[i - 1]) : i * loop / n;
+    const segEnd = i => borders ? (i === borders.length ? loop : borders[i]) : (i + 1) * loop / n;
+    const mn = Math.min.apply(null, e.show.scenes);
+    const mx = Math.max.apply(null, e.show.scenes);
+    return [segStart(mn), segEnd(mx)];
+  }
+  if (Array.isArray(e.show)) return [e.show[0] || 0, e.show[1] == null ? loop : e.show[1]];
+  return null;
+}
+function renderTimeline() {
+  const cv = $('tl');
+  if (!cv || !cv.getContext) return;
+  // 清晰化关键：画布按"CSS 显示尺寸 × supersample(≥2，或 devicePixelRatio)"建后备存储，
+  // 再以 setTransform 按 CSS 像素绘制——拉伸/高分屏/低分屏下刻度与文字都不再被插值放大发虚。
+  const scale = Math.max(2, window.devicePixelRatio || 1);
+  const Wcss = cv.clientWidth || 320;
+  const Hcss = 20;
+  const W = Math.max(2, Math.round(Wcss * scale));
+  const H = Math.max(2, Math.round(Hcss * scale));
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  const loop = tlLoop();
+  const scenes = tlScenes();
+  // 构建原理：0~loop 秒按比例映射到画布宽度（x = t/loop*W），
+  // 刻度/段分隔/色块/播放头全部按该比例定位；loop 每帧刷新播放头。
+  // 通用模式：中性浅色轨道；打开含 scenes 的 js 后叠加段底色与段名。
+  ctx.fillStyle = '#f2f3f8'; ctx.fillRect(0, 0, Wcss, Hcss);
+  const step = Math.max(1, Math.round(loop / 8));
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'bottom';
+  for (let s = 0; s <= loop; s += step) {
+    const x = Math.round((s / loop) * Wcss);
+    ctx.fillStyle = '#c3c9d8';
+    ctx.fillRect(x, 0, 1, Hcss);
+    ctx.fillStyle = '#4a5266';
+    ctx.fillText(String(s), x + 2, Hcss - 1);
+  }
+  const cols = ['#e5484d', '#3d9bf2', '#2fbf6a', '#e6a23c', '#9b59d0', '#00b8a0'];
+  if (scenes) {
+    // 场景段：优先 sceneBorders（可拖拽），否则等分；边界画竖线 + 顶部小三角手柄
+    const cfg = window.HOME_SCENE;
+    const borders = currentBorders(cfg);
+    const segs = [];
+    let prev = 0;
+    for (let i = 0; i < borders.length; i++) { segs.push([prev, borders[i]]); prev = borders[i]; }
+    segs.push([prev, loop]);
+    scenes.forEach((nm, i) => {
+      const a = segs[i][0], b = segs[i][1];
+      const x0 = Math.round((a / loop) * Wcss);
+      const x1 = Math.round((b / loop) * Wcss);
+      ctx.fillStyle = cols[i % cols.length];
+      ctx.globalAlpha = 0.10;
+      ctx.fillRect(x0, 0, x1 - x0, Hcss);
+      ctx.globalAlpha = 1;
+      if (nm) {
+        ctx.fillStyle = '#4a5266';
+        ctx.font = '9px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText(nm, Math.round((x0 + x1) / 2), 1);
+      }
+    });
+    borders.forEach(bt => {
+      const x = Math.round((bt / loop) * Wcss);
+      ctx.fillStyle = '#9aa3b8';
+      ctx.fillRect(x, 0, 1, Hcss);
+      ctx.fillStyle = '#4a5266';
+      ctx.beginPath(); ctx.moveTo(x - 3, 0); ctx.lineTo(x + 3, 0); ctx.lineTo(x, 4); ctx.closePath(); ctx.fill();
+    });
+  }
+  // 最近打开的 [S] 面板元素（showFocusEl）的窗口绝对秒标注：数值映射到时间轴，[S] 面板保持干净
+  const popEl = showFocusEl;
+  if (popEl && popEl.show && Array.isArray(popEl.show) && popEl.show.length && (popEl.show[0] === null || Array.isArray(popEl.show[0]))) {
+    ctx.font = '6px monospace';
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#d23b44';
+    popEl.show.forEach((w, i) => {
+      if (!w) return;
+      const wins = Array.isArray(w[0]) ? w : [w];
+      const [s0, s1] = tlSceneRange(i);
+      wins.forEach(seg => {
+        const a = s0 + seg[0] * (s1 - s0);
+        const b = s0 + seg[1] * (s1 - s0);
+        ctx.fillText(a.toFixed(1), Math.min(Wcss - 20, Math.round((a / loop) * Wcss) + 2), 8);
+        ctx.fillText(b.toFixed(1), Math.max(0, Math.round((b / loop) * Wcss) - 14), 8);
+      });
+    });
+  }
+  // 场景边界拖拽中：显示当前边界的绝对时间（0.1s 精度）
+  if (tlDragBorder != null && window.HOME_SCENE) {
+    const b = currentBorders(window.HOME_SCENE);
+    const bt = b[tlDragBorder];
+    const x = Math.round((bt / loop) * Wcss);
+    ctx.font = '7px monospace';
+    ctx.textBaseline = 'bottom';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#e5484d';
+    ctx.fillText(bt.toFixed(1) + 's', x + 3, Hcss - 1);
+  }
+  // show 时段色块（只映射最近打开的 [S] 面板元素；未打开过则显示全部）
+  const items = [];
+  const cfg = window.HOME_SCENE;
+  if (showFocusEl && state.sceneParamsMode) {
+    items.push(showFocusEl);
+  } else if (state.sceneParamsMode && cfg) {
+    for (const k of Object.keys(cfg)) {
+      const v = cfg[k];
+      if (v && typeof v === 'object' && !Array.isArray(v) && v.show) items.push(v);
+    }
+    for (const e of cfg.images || []) if (e && e.show) items.push(e);
+  } else {
+    for (const e of state.elements) if (e && e.show) items.push(e);
+  }
+  items.forEach((e, i) => {
+    const rs = showRanges(e, loop);
+    if (!rs) return;
+    rs.forEach(r => {
+      const x0 = Math.round((r[0] / loop) * Wcss);
+      const x1 = Math.max(x0 + 2, Math.round((r[1] / loop) * Wcss));
+      ctx.fillStyle = cols[i % cols.length];
+      ctx.globalAlpha = 0.7;
+      ctx.fillRect(x0, Math.round(Hcss * 0.52), x1 - x0, Math.max(2, Math.round(Hcss * 0.38)));
+      ctx.globalAlpha = 1;
+    });
+  });
+  // 播放头 + 当前秒
+  const px = Math.round(((state.t % loop) / loop) * Wcss);
+  ctx.fillStyle = '#e5484d';
+  ctx.fillRect(px, 0, 1, Hcss);
+  ctx.fillStyle = '#e5484d';
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(Math.round(state.t) + 's', Wcss - 2, Hcss - 1);
+}
+function tlSeek(ev) {
+  const r = $('tl').getBoundingClientRect();
+  const frac = Math.max(0, Math.min(1, (ev.clientX - r.left) / Math.max(1, r.width)));
+  state.t = frac * tlLoop();
+  const cs = tlScene();
+  if (cs !== state.lastTlScene) {
+    state.lastTlScene = cs;
+    if (window.HOME_SCENE) { buildLayerList(layerCfg()); renderSceneBar(); }
+  }
+  if (window.HomeScene && HomeScene.seek) HomeScene.seek(state.t);
+  renderStage();
+  renderTimeline();
+}
+// 场景边界拖拽：命中边界线（±6px）拖边界，否则 scrub
+let tlDragBorder = null;
+function tlBorderHit(ev) {
+  const cfg = window.HOME_SCENE;
+  if (!cfg || !state.sceneParamsMode || !(cfg.scenes && cfg.scenes.length)) return -1;
+  const r = $('tl').getBoundingClientRect();
+  const frac = (ev.clientX - r.left) / Math.max(1, r.width);
+  const bounds = currentBorders(cfg);
+  const loop = tlLoop();
+  for (let i = 0; i < bounds.length; i++) {
+    if (Math.abs(frac - bounds[i] / loop) < 6 / Math.max(1, r.width)) return i;
+  }
+  return -1;
+}
+$('tl').addEventListener('pointerdown', ev => {
+  const bi = tlBorderHit(ev);
+  if (bi >= 0) { tlDragBorder = bi; ev.preventDefault(); return; }
+  tlDragging = true;
+  tlSeek(ev);
+});
+window.addEventListener('pointermove', ev => {
+  if (tlDragBorder != null) {
+    const cfg = window.HOME_SCENE;
+    if (!cfg) { tlDragBorder = null; return; }
+    const loop = tlLoop();
+    const r = $('tl').getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (ev.clientX - r.left) / Math.max(1, r.width)));
+    const bounds = cfg.sceneBorders = currentBorders(cfg); // 拖拽即落定 sceneBorders
+    const prev = tlDragBorder > 0 ? bounds[tlDragBorder - 1] : 0;
+    const next = tlDragBorder < bounds.length - 1 ? bounds[tlDragBorder + 1] : loop;
+    bounds[tlDragBorder] = Math.max(prev + 0.5, Math.min(next - 0.5, frac * loop));
+    renderTimeline();
+    if (window.HomeScene && HomeScene.seek) HomeScene.seek(state.t);
+    return;
+  }
+  if (tlDragging) tlSeek(ev);
+});
+window.addEventListener('pointerup', () => { tlDragging = false; tlDragBorder = null; });
+
+/* ---------------- 场景编辑（增/删/改名；时间轴边界拖拽联动） ---------------- */
+function syncSceneArrays(cfg, oldN, newN) {
+  // 长度 == 旧场景数的数值/字符串数组视为「按场景数组」→ 补齐（取末位）/截断
+  const fix = o => {
+    for (const k of Object.keys(o)) {
+      const v = o[k];
+      if (Array.isArray(v) && v.length === oldN && v.every(x => typeof x === 'number' || typeof x === 'string')) {
+        while (v.length < newN) v.push(v.length ? v[v.length - 1] : 0);
+        if (v.length > newN) v.length = newN;
+      }
+    }
+  };
+  for (const k of Object.keys(cfg)) {
+    const v = cfg[k];
+    if (v && typeof v === 'object' && !Array.isArray(v)) fix(v);
+  }
+  (cfg.images || []).forEach(fix);
+}
+function renderSceneBar() {
+  const bar = $('scene-bar');
+  const cfg = window.HOME_SCENE;
+  if (!cfg || !state.sceneParamsMode || !(cfg.scenes && cfg.scenes.length)) { bar.innerHTML = ''; return; }
+  const cur = tlScene();
+  bar.innerHTML = '';
+  cfg.scenes.forEach((nm, i) => {
+    const chip = document.createElement('button');
+    chip.className = 'scene-chip' + (cur === i ? ' active' : '');
+    chip.title = '点击 = 切换编辑场景（跳播放头）· 双击 = 改名 · ✕ = 删除';
+    chip.innerHTML = escapeHtml(nm) + ' <span class="x">✕</span>';
+    chip.addEventListener('click', ev => {
+      ev.stopPropagation();
+      if (ev.target.classList && ev.target.classList.contains('x')) {
+        if (!window.confirm('删除场景「' + nm + '」？按场景参数将截断，显示时间窗口将重排。')) return;
+        deleteScene(i);
+      } else {
+        jumpScene(i);
+      }
+    });
+    chip.addEventListener('dblclick', ev => {
+      ev.stopPropagation();
+      if (ev.target.classList && ev.target.classList.contains('x')) return;
+      const v = window.prompt('场景名（第 ' + (i + 1) + ' 段）：', nm);
+      if (v && v.trim()) { cfg.scenes[i] = v.trim(); renderSceneBar(); renderTimeline(); }
+    });
+    bar.appendChild(chip);
+  });
+  const add = document.createElement('button');
+  add.className = 'scene-chip add';
+  add.textContent = '+ 场景';
+  add.title = '新增场景（等分插入，按场景数组自动补齐）';
+  add.addEventListener('click', () => { addScene(); });
+  bar.appendChild(add);
+}
+function jumpScene(i) {
+  // 切换编辑场景：播放头跳到该场景起点，图层栏/时间轴随之更新
+  const cfg = window.HOME_SCENE; if (!cfg) return;
+  const [s0] = tlSceneRange(i);
+  state.t = s0;
+  state.lastTlScene = i;
+  if (window.HomeScene && HomeScene.seek) HomeScene.seek(state.t);
+  buildLayerList(layerCfg());
+  renderSceneBar();
+  renderStage();
+  renderTimeline();
+}
+function addScene() {
+  const cfg = window.HOME_SCENE; if (!cfg) return;
+  cfg.scenes = cfg.scenes || [];
+  const oldN = cfg.scenes.length;
+  const v = window.prompt('新场景名：', '场景' + (oldN + 1));
+  if (!v || !v.trim()) return;
+  cfg.scenes.push(v.trim());
+  cfg.sceneBorders = equalBorders(cfg, cfg.scenes.length);
+  syncSceneArrays(cfg, oldN, cfg.scenes.length);
+  renderSceneBar(); renderTimeline();
+  if (window.HomeScene && HomeScene.seek) HomeScene.seek(state.t);
+}
+function deleteScene(i) {
+  const cfg = window.HOME_SCENE; if (!cfg) return;
+  const oldN = cfg.scenes.length;
+  cfg.scenes.splice(i, 1);
+  if (!cfg.scenes.length) cfg.scenes = ['场景'];
+  cfg.sceneBorders = equalBorders(cfg, cfg.scenes.length);
+  syncSceneArrays(cfg, oldN, cfg.scenes.length);
+  renderSceneBar(); renderTimeline();
+  if (window.HomeScene && HomeScene.seek) HomeScene.seek(state.t);
+}
+
+/* ---------------- 场景层（home-scene.js 叠底）与画布尺寸 ---------------- */
+// home-scene.js 硬编码 320×118：场景层开启时画布锁定该尺寸（素材层对齐叠加），关闭时可自定义
+function syncCanvasSize() {
+  const cfg = window.HOME_SCENE;
+  if (state.showScene && cfg) {
+    state.cw = cfg.w || 320; state.ch = cfg.h || 118;
+  } else {
+    state.cw = Math.max(32, parseInt($('gw').value) || 320);
+    state.ch = Math.max(32, parseInt($('gh').value) || 118);
+  }
+}
+$('showscene').addEventListener('change', () => {
+  state.showScene = $('showscene').checked;
+  $('home-scene').style.display = state.showScene ? 'block' : 'none';
+  syncCanvasSize();
+  renderStage();
+  renderTimeline();
+});
+
+/* ---------------- 启动 ---------------- */
+renderLib();
+syncGlobals();
+ensureAllImages();
+renderSceneBar();
+renderTimeline();
+syncCanvasSize();
+resizeStageWrap(); // 显示框初始高度（默认 320×118 比例）
+$('home-scene').style.display = state.showScene ? 'block' : 'none';
+if (window.__sceneLoadFail) $('m-stage').textContent = '⚠ 场景层加载失败：未找到 ../public/home-scene.js（可取消勾选"场景层"）';
+renderStage();
+state.last = performance.now();
+state.raf = requestAnimationFrame(loop);
+</script>
+</body>
+</html>
